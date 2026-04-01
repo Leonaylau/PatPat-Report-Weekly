@@ -1,0 +1,153 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fulfillment Email Weekly Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Fulfillment Email Dashboard</p>
+        <h1>Multi-Week Performance Report</h1>
+        <p class="hero-copy">
+          Upload weekly CSV reports, keep historical weeks in the browser, switch any week on demand,
+          and compare the current week against the prior week with WoW performance context.
+        </p>
+      </div>
+      <div class="upload-card">
+        <div class="control-group">
+          <label class="upload-button" for="csvInput">Upload CSV</label>
+          <input id="csvInput" type="file" accept=".csv,text/csv" multiple>
+        </div>
+        <div class="control-group">
+          <label class="control control-full">
+            <span>Week</span>
+            <select id="weekSelect">
+              <option value="">No week loaded</option>
+            </select>
+          </label>
+        </div>
+        <div class="action-row">
+          <button id="exportWeekButton" class="secondary-button" type="button">Export Current Week</button>
+          <button id="clearDataButton" class="danger-button" type="button">Clear All Data</button>
+        </div>
+        <p id="fileMeta" class="file-meta">No file loaded</p>
+      </div>
+    </header>
+
+    <main class="dashboard">
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Section 01</p>
+            <h2>Weekly Overview</h2>
+            <p id="overviewContext" class="section-caption">Select or upload a week to view KPI summary and WoW movement.</p>
+          </div>
+        </div>
+        <div id="overviewGrid" class="metric-grid empty-state-grid">
+          <div class="empty-state">Upload one or more CSV files to populate weekly KPIs.</div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Section 02</p>
+            <h2>Flow Performance</h2>
+            <p id="flowContext" class="section-caption">Current week flow table with prior-week flow WoW comparison.</p>
+          </div>
+          <div class="toolbar">
+            <label class="control">
+              <span>Search Flow</span>
+              <input id="flowSearch" type="search" placeholder="Search flow name">
+            </label>
+            <label class="control">
+              <span>Filter Trigger</span>
+              <select id="triggerFilter">
+                <option value="">All triggers</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="flowTable">
+            <thead></thead>
+            <tbody>
+              <tr>
+                <td class="empty-cell">Upload a CSV file to view flow-level performance.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Section 03</p>
+            <h2>Contribution Analysis</h2>
+            <p class="section-caption">Contribution share is based on the selected week and current filter set.</p>
+          </div>
+        </div>
+        <div class="chart-grid contribution-grid">
+          <div class="chart-card">
+            <h3>Click Share by Flow</h3>
+            <div id="clickShareChart" class="bar-chart empty-chart"></div>
+          </div>
+          <div class="chart-card">
+            <h3>Revenue Share by Flow</h3>
+            <div id="revenueShareChart" class="bar-chart empty-chart"></div>
+          </div>
+          <div class="chart-card">
+            <h3>Order UV Share by Flow</h3>
+            <div id="orderShareChart" class="bar-chart empty-chart"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Section 04</p>
+            <h2>Efficiency Analysis</h2>
+            <p class="section-caption">Bubble charts use the selected week and current filter set.</p>
+          </div>
+        </div>
+        <div class="chart-grid efficiency-grid">
+          <div class="chart-card">
+            <h3>Open Rate vs CTOR</h3>
+            <p class="chart-caption">Bubble size = 发送数</p>
+            <div id="efficiencyChartOne" class="scatter-chart empty-chart"></div>
+          </div>
+          <div class="chart-card">
+            <h3>Click Rate vs 客净利</h3>
+            <p class="chart-caption">Bubble size = 送达数</p>
+            <div id="efficiencyChartTwo" class="scatter-chart empty-chart"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Section 05</p>
+            <h2>Weekly Trends</h2>
+            <p class="section-caption">Trend lines are ordered by parsed week number, not string sort order.</p>
+          </div>
+        </div>
+        <div id="trendGrid" class="chart-grid trends-grid">
+          <div class="chart-card empty-chart">Upload at least one week to see trend lines.</div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
