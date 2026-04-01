@@ -1,4 +1,4 @@
-﻿const STORAGE_KEY = "fulfillment-dashboard-multiweek-v1";
+const MANIFEST_PATH = "./data/manifest.json";
 
 const state = {
   store: {
@@ -13,7 +13,7 @@ const state = {
   sortDirection: "desc",
   triggerValue: "",
   searchValue: "",
-  statusMessage: "No file loaded",
+  statusMessage: "Loading repository data...",
 };
 
 const overviewMetrics = [
@@ -40,12 +40,12 @@ const tableColumns = [
   { key: "unsubscribeRate", label: "退订率", type: "rate" },
   { key: "orderUv", label: "下单uv", type: "number" },
   { key: "revenue", label: "revenue", type: "currency" },
-  { key: "revenueWow", label: "revenue WoW", type: "wowCurrency", inverse: false },
-  { key: "orderUvWow", label: "下单uv WoW", type: "wowNumber", inverse: false },
-  { key: "openRateWow", label: "打开率 WoW", type: "wowRate", inverse: false },
-  { key: "clickRateWow", label: "点击率 WoW", type: "wowRate", inverse: false },
-  { key: "ctorWow", label: "打开点击率 WoW", type: "wowRate", inverse: false },
-  { key: "unsubscribeRateWow", label: "退订率 WoW", type: "wowRate", inverse: true },
+  { key: "revenueWow", label: "revenue WoW", type: "wowCurrency" },
+  { key: "orderUvWow", label: "下单uv WoW", type: "wowNumber" },
+  { key: "openRateWow", label: "打开率 WoW", type: "wowRate" },
+  { key: "clickRateWow", label: "点击率 WoW", type: "wowRate" },
+  { key: "ctorWow", label: "打开点击率 WoW", type: "wowRate" },
+  { key: "unsubscribeRateWow", label: "退订率 WoW", type: "wowRate" },
 ];
 
 const trendMetrics = [
@@ -56,18 +56,14 @@ const trendMetrics = [
   { label: "下单uv 趋势", key: "orderUv", type: "number" },
 ];
 
-document.addEventListener("DOMContentLoaded", () => {
-  loadStore();
+document.addEventListener("DOMContentLoaded", async () => {
   bindEvents();
-  hydrateCurrentWeek();
-  render();
+  await initializeRepositoryData();
 });
 
 function bindEvents() {
-  document.getElementById("csvInput").addEventListener("change", handleFileUpload);
   document.getElementById("weekSelect").addEventListener("change", (event) => {
     state.selectedWeek = event.target.value;
-    persistStore();
     hydrateCurrentWeek();
   });
   document.getElementById("flowSearch").addEventListener("input", (event) => {
@@ -78,86 +74,108 @@ function bindEvents() {
     state.triggerValue = event.target.value;
     applyFiltersAndRender();
   });
-  document.getElementById("clearDataButton").addEventListener("click", clearAllData);
   document.getElementById("exportWeekButton").addEventListener("click", exportCurrentWeek);
 }
 
-function loadStore() {
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if (!saved) {
-    return;
-  }
-
+async function initializeRepositoryData() {
   try {
-    const parsed = JSON.parse(saved);
-    state.store.weeks = parsed.weeks || {};
-    state.store.weekOrder = sortWeekLabels(parsed.weekOrder || Object.keys(state.store.weeks));
-    state.selectedWeek = parsed.selectedWeek || state.store.weekOrder[state.store.weekOrder.length - 1] || "";
-    state.statusMessage = state.store.weekOrder.length
-      ? `${state.store.weekOrder.length} week(s) restored from browser storage.`
-      : "No file loaded";
-  } catch {
-    state.statusMessage = "Stored dashboard data could not be restored.";
+    const manifest = await fetchJson(MANIFEST_PATH);
+    const entries = normalizeManifestEntries(manifest);
+
+    if (!entries.length) {
+      state.statusMessage = `No weeks found in ${MANIFEST_PATH}.`;
+      render();
+      return;
+    }
+
+    for (const entry of entries) {
+      const csvText = await fetchText(entry.path);
+      const rows = parseCsv(csvText);
+      state.store.weeks[entry.weekLabel] = buildWeekData({
+        rows,
+        csvText,
+        weekLabel: entry.weekLabel,
+        fileName: entry.fileName,
+      });
+    }
+
+    state.store.weekOrder = sortWeekLabels(Object.keys(state.store.weeks));
+    state.selectedWeek = state.store.weekOrder[state.store.weekOrder.length - 1] || "";
+    state.statusMessage = `Loaded ${state.store.weekOrder.length} week(s) from ${MANIFEST_PATH}.`;
+    hydrateCurrentWeek();
+  } catch (error) {
+    state.statusMessage = `Failed to load repository data: ${error.message}`;
+    render();
   }
 }
 
-function persistStore() {
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({
-      weeks: state.store.weeks,
-      weekOrder: state.store.weekOrder,
-      selectedWeek: state.selectedWeek,
-    })
-  );
+async function fetchJson(path) {
+  const response = await fetch(path, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`${path} returned ${response.status}`);
+  }
+  return response.json();
 }
 
-async function handleFileUpload(event) {
-  const files = Array.from(event.target.files || []);
-  if (!files.length) {
-    return;
+async function fetchText(path) {
+  const response = await fetch(path, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`${path} returned ${response.status}`);
   }
+  return response.text();
+}
 
-  const messages = [];
-  let latestUploadedLabel = state.selectedWeek;
+function normalizeManifestEntries(manifest) {
+  const rawWeeks = Array.isArray(manifest)
+    ? manifest
+    : Array.isArray(manifest?.weeks)
+      ? manifest.weeks
+      : [];
 
-  for (const file of files) {
-    const csvText = await readFileAsText(file);
-    const rows = parseCsv(csvText);
-    let weekLabel = extractWeekLabel(file.name);
+  return rawWeeks
+    .map((entry) => normalizeManifestEntry(entry))
+    .filter(Boolean);
+}
 
+function normalizeManifestEntry(entry) {
+  if (typeof entry === "string") {
+    const weekLabel = normalizeWeekLabel(entry);
     if (!weekLabel) {
-      const manual = window.prompt(`Cannot parse week label from ${file.name}. Enter a week label:`, file.name.replace(/\.csv$/i, ""));
-      weekLabel = normalizeWeekLabel(manual || "");
+      return null;
     }
-
-    if (!weekLabel) {
-      messages.push(`${file.name}: skipped because no week label was provided.`);
-      continue;
-    }
-
-    const existed = Boolean(state.store.weeks[weekLabel]);
-    state.store.weeks[weekLabel] = buildWeekData({
-      rows,
-      csvText,
+    return {
       weekLabel,
-      fileName: file.name,
-    });
-
-    if (!state.store.weekOrder.includes(weekLabel)) {
-      state.store.weekOrder.push(weekLabel);
-    }
-
-    latestUploadedLabel = weekLabel;
-    messages.push(existed ? `${weekLabel} 数据已更新。` : `${weekLabel} 已加入数据集合。`);
+      fileName: `${weekLabel}.csv`,
+      path: `./data/${weekLabel}.csv`,
+    };
   }
 
-  state.store.weekOrder = sortWeekLabels(state.store.weekOrder);
-  state.selectedWeek = latestUploadedLabel;
-  state.statusMessage = messages.join(" ") || "No file loaded";
-  persistStore();
-  hydrateCurrentWeek();
-  event.target.value = "";
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+
+  const weekLabel = normalizeWeekLabel(entry.week || entry.label || entry.name || entry.file || entry.filename || "");
+  const fileName = normalizeFileName(entry.file || entry.filename || `${weekLabel}.csv`);
+  if (!weekLabel || !fileName) {
+    return null;
+  }
+
+  return {
+    weekLabel,
+    fileName,
+    path: fileName.startsWith("./") ? fileName : `./data/${fileName}`,
+  };
+}
+
+function normalizeFileName(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+  if (raw.endsWith(".csv")) {
+    return raw.split("/").pop();
+  }
+  return `${raw.split("/").pop()}.csv`;
 }
 
 function buildWeekData({ rows, csvText, weekLabel, fileName }) {
@@ -205,7 +223,6 @@ function buildWeekData({ rows, csvText, weekLabel, fileName }) {
     weekLabel,
     fileName,
     rawCsv: csvText,
-    uploadedAt: Date.now(),
     summary,
     detailRows,
     allocationNotes,
@@ -226,18 +243,20 @@ function applyFiltersAndRender() {
   const detailRows = state.currentWeek?.detailRows || [];
   const priorMap = new Map((state.priorWeek?.detailRows || []).map((row) => [row.flow, row]));
 
-  const filtered = detailRows
-    .filter((row) => {
-      const flowMatch = !state.searchValue || row.flow.toLowerCase().includes(state.searchValue);
-      const triggerMatch = !state.triggerValue || row.trigger === state.triggerValue;
-      return flowMatch && triggerMatch;
-    })
-    .map((row) => enrichFlowWow(row, priorMap.get(row.flow) || null, Boolean(state.priorWeek)));
+  state.filteredRows = sortRows(
+    detailRows
+      .filter((row) => {
+        const flowMatch = !state.searchValue || row.flow.toLowerCase().includes(state.searchValue);
+        const triggerMatch = !state.triggerValue || row.trigger === state.triggerValue;
+        return flowMatch && triggerMatch;
+      })
+      .map((row) => enrichFlowWow(row, priorMap.get(row.flow) || null, Boolean(state.priorWeek))),
+    state.sortKey,
+    state.sortDirection
+  );
 
-  state.filteredRows = sortRows(filtered, state.sortKey, state.sortDirection);
   render();
 }
-
 function enrichFlowWow(currentRow, priorRow, hasPriorWeek) {
   return {
     ...currentRow,
@@ -249,6 +268,7 @@ function enrichFlowWow(currentRow, priorRow, hasPriorWeek) {
     unsubscribeRateWow: buildWowObject(currentRow.unsubscribeRate, priorRow?.unsubscribeRate, "rate", true, hasPriorWeek, Boolean(priorRow)),
   };
 }
+
 function render() {
   renderMeta();
   renderOverview();
@@ -260,10 +280,11 @@ function render() {
 
 function renderMeta() {
   const notes = state.currentWeek?.allocationNotes || [];
-  const meta = document.getElementById("fileMeta");
   const exportButton = document.getElementById("exportWeekButton");
   exportButton.disabled = !state.currentWeek;
-  meta.textContent = notes.length ? `${state.statusMessage} ${notes.join(" ")}` : state.statusMessage;
+  document.getElementById("fileMeta").textContent = notes.length
+    ? `${state.statusMessage} ${notes.join(" ")}`
+    : state.statusMessage;
 }
 
 function renderOverview() {
@@ -271,8 +292,8 @@ function renderOverview() {
   const context = document.getElementById("overviewContext");
 
   if (!state.currentWeek?.summary) {
-    context.textContent = "Select or upload a week to view KPI summary and WoW movement.";
-    container.innerHTML = '<div class="empty-state">Upload one or more CSV files to populate weekly KPIs.</div>';
+    context.textContent = "Select a week to view KPI summary and WoW movement.";
+    container.innerHTML = '<div class="empty-state">Repository data is not available yet.</div>';
     return;
   }
 
@@ -281,27 +302,26 @@ function renderOverview() {
     ? `${state.currentWeek.weekLabel} compared with ${state.priorWeek.weekLabel}`
     : `${state.currentWeek.weekLabel} with no prior week comparison available.`;
 
-  container.innerHTML = overviewMetrics
-    .map((metric) => {
-      const currentValue = state.currentWeek.summary[metric.key];
-      const priorValue = priorSummary ? priorSummary[metric.key] : null;
-      const wow = buildWowObject(currentValue, priorValue, metric.type, metric.inverse, Boolean(priorSummary), true);
-      return `
-        <article class="metric-card">
-          <p class="metric-label">${escapeHtml(metric.label)}</p>
-          <p class="metric-value">${escapeHtml(formatValue(currentValue, metric.type))}</p>
-          <div class="wow-block">
-            <div class="wow-row ${wow.className}">
-              <span class="wow-abs">${escapeHtml(wow.absLabel)}</span>
-              <span class="wow-pct">${escapeHtml(wow.pctLabel)}</span>
-            </div>
-            <p class="wow-note ${wow.className}">${escapeHtml(wow.note)}</p>
+  container.innerHTML = overviewMetrics.map((metric) => {
+    const currentValue = state.currentWeek.summary[metric.key];
+    const priorValue = priorSummary ? priorSummary[metric.key] : null;
+    const wow = buildWowObject(currentValue, priorValue, metric.type, metric.inverse, Boolean(priorSummary), true);
+
+    return `
+      <article class="metric-card">
+        <p class="metric-label">${escapeHtml(metric.label)}</p>
+        <p class="metric-value">${escapeHtml(formatValue(currentValue, metric.type))}</p>
+        <div class="wow-block">
+          <div class="wow-row ${wow.className}">
+            <span class="wow-abs">${escapeHtml(wow.absLabel)}</span>
+            <span class="wow-pct">${escapeHtml(wow.pctLabel)}</span>
           </div>
-          <p class="metric-subtext">${escapeHtml(state.currentWeek.weekLabel)}</p>
-        </article>
-      `;
-    })
-    .join("");
+          <p class="wow-note ${wow.className}">${escapeHtml(wow.note)}</p>
+        </div>
+        <p class="metric-subtext">${escapeHtml(state.currentWeek.weekLabel)}</p>
+      </article>
+    `;
+  }).join("");
 }
 
 function renderFlowTable() {
@@ -312,7 +332,7 @@ function renderFlowTable() {
   if (!state.currentWeek?.detailRows?.length) {
     context.textContent = "Current week flow table with prior-week flow WoW comparison.";
     thead.innerHTML = "";
-    tbody.innerHTML = '<tr><td class="empty-cell">Upload a CSV file to view flow-level performance.</td></tr>';
+    tbody.innerHTML = '<tr><td class="empty-cell">Repository-backed flow data is not available yet.</td></tr>';
     return;
   }
 
@@ -320,17 +340,11 @@ function renderFlowTable() {
     ? `${state.currentWeek.weekLabel} flow performance vs ${state.priorWeek.weekLabel}`
     : `${state.currentWeek.weekLabel} flow performance with no prior week comparison.`;
 
-  thead.innerHTML = `
-    <tr>
-      ${tableColumns
-        .map((column) => {
-          const active = state.sortKey === column.key;
-          const arrow = active ? (state.sortDirection === "asc" ? " ↑" : " ↓") : "";
-          return `<th><button type="button" data-sort-key="${column.key}">${escapeHtml(column.label)}${arrow}</button></th>`;
-        })
-        .join("")}
-    </tr>
-  `;
+  thead.innerHTML = `<tr>${tableColumns.map((column) => {
+    const active = state.sortKey === column.key;
+    const arrow = active ? (state.sortDirection === "asc" ? " ↑" : " ↓") : "";
+    return `<th><button type="button" data-sort-key="${column.key}">${escapeHtml(column.label)}${arrow}</button></th>`;
+  }).join("")}</tr>`;
 
   thead.querySelectorAll("button[data-sort-key]").forEach((button) => {
     button.addEventListener("click", () => handleSort(button.dataset.sortKey));
@@ -341,13 +355,11 @@ function renderFlowTable() {
     return;
   }
 
-  tbody.innerHTML = state.filteredRows
-    .map((row) => `
-      <tr>
-        ${tableColumns.map((column) => renderTableCell(row, column)).join("")}
-      </tr>
-    `)
-    .join("");
+  tbody.innerHTML = state.filteredRows.map((row) => `
+    <tr>
+      ${tableColumns.map((column) => renderTableCell(row, column)).join("")}
+    </tr>
+  `).join("");
 }
 
 function renderTableCell(row, column) {
@@ -366,9 +378,8 @@ function renderTableCell(row, column) {
     `;
   }
 
-  const value = formatValue(row[column.key], column.type);
   const className = column.key === "flow" ? "flow-name" : "";
-  return `<td class="${className}">${escapeHtml(value)}</td>`;
+  return `<td class="${className}">${escapeHtml(formatValue(row[column.key], column.type))}</td>`;
 }
 
 function renderContributionCharts() {
@@ -408,63 +419,39 @@ function renderTrendCharts() {
     .filter((item) => item.summary);
 
   if (!weekSeries.length) {
-    container.innerHTML = '<div class="chart-card empty-chart">Upload at least one week to see trend lines.</div>';
+    container.innerHTML = '<div class="chart-card empty-chart">Repository trend data is not available yet.</div>';
     return;
   }
 
-  container.innerHTML = trendMetrics
-    .map((metric) => `
-      <div class="chart-card">
-        <h3>${escapeHtml(metric.label)}</h3>
-        <div class="line-chart">${renderLineSvg(weekSeries, metric)}</div>
-      </div>
-    `)
-    .join("");
+  container.innerHTML = trendMetrics.map((metric) => `
+    <div class="chart-card">
+      <h3>${escapeHtml(metric.label)}</h3>
+      <div class="line-chart">${renderLineSvg(weekSeries, metric)}</div>
+    </div>
+  `).join("");
 }
 
 function populateWeekSelector() {
   const select = document.getElementById("weekSelect");
   const weeks = state.store.weekOrder;
+
   if (!weeks.length) {
     select.innerHTML = '<option value="">No week loaded</option>';
     return;
   }
 
-  select.innerHTML = weeks
-    .map((label) => `<option value="${escapeAttribute(label)}">${escapeHtml(label)}</option>`)
-    .join("");
-
+  select.innerHTML = weeks.map((label) => `<option value="${escapeAttribute(label)}">${escapeHtml(label)}</option>`).join("");
   select.value = state.selectedWeek || weeks[weeks.length - 1];
 }
 
 function populateTriggerFilter() {
-  const select = document.getElementById("triggerFilter");
   const rows = state.currentWeek?.detailRows || [];
   const triggers = [...new Set(rows.map((row) => row.trigger).filter(Boolean))].sort();
+  const select = document.getElementById("triggerFilter");
   select.innerHTML = '<option value="">All triggers</option>' + triggers
     .map((trigger) => `<option value="${escapeAttribute(trigger)}">${escapeHtml(trigger)}</option>`)
     .join("");
   select.value = state.triggerValue;
-}
-
-function clearAllData() {
-  if (!window.confirm("Clear all stored weekly dashboard data?")) {
-    return;
-  }
-
-  state.store = { weeks: {}, weekOrder: [] };
-  state.selectedWeek = "";
-  state.currentWeek = null;
-  state.priorWeek = null;
-  state.filteredRows = [];
-  state.triggerValue = "";
-  state.searchValue = "";
-  document.getElementById("flowSearch").value = "";
-  localStorage.removeItem(STORAGE_KEY);
-  state.statusMessage = "All stored weekly data has been cleared.";
-  populateWeekSelector();
-  populateTriggerFilter();
-  render();
 }
 
 function exportCurrentWeek() {
@@ -500,10 +487,7 @@ function buildShareData(valueKey) {
 
   const total = state.filteredRows.reduce((sum, row) => sum + (toNumber(row[valueKey]) || 0), 0);
   return state.filteredRows
-    .map((row) => ({
-      label: row.flow,
-      share: safeDivide(row[valueKey], total) || 0,
-    }))
+    .map((row) => ({ label: row.flow, share: safeDivide(row[valueKey], total) || 0 }))
     .sort((a, b) => b.share - a.share);
 }
 function renderBarChart(container, data) {
@@ -514,15 +498,13 @@ function renderBarChart(container, data) {
   }
 
   container.classList.remove("empty-chart");
-  container.innerHTML = data
-    .map((item) => `
-      <div class="bar-row">
-        <div class="bar-label" title="${escapeAttribute(item.label)}">${escapeHtml(item.label)}</div>
-        <div class="bar-track"><div class="bar-fill" style="width:${Math.max(item.share * 100, 0)}%"></div></div>
-        <div class="bar-value">${escapeHtml(formatPercent(item.share))}</div>
-      </div>
-    `)
-    .join("");
+  container.innerHTML = data.map((item) => `
+    <div class="bar-row">
+      <div class="bar-label" title="${escapeAttribute(item.label)}">${escapeHtml(item.label)}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.max(item.share * 100, 0)}%"></div></div>
+      <div class="bar-value">${escapeHtml(formatPercent(item.share))}</div>
+    </div>
+  `).join("");
 }
 
 function renderScatterChart({ element, rows, xKey, yKey, sizeKey, xLabel, yLabel, yType }) {
@@ -675,50 +657,32 @@ function compareValues(a, b, type) {
   }
   return (toNumber(a) || 0) - (toNumber(b) || 0);
 }
+
 function buildWowObject(currentValue, priorValue, type, inverse, hasPriorWeek, hasPriorMatch) {
   if (!hasPriorWeek) {
-    return {
-      absLabel: "—",
-      pctLabel: "—",
-      note: "No prior week",
-      className: "wow-neutral",
-      sortValue: Number.NEGATIVE_INFINITY,
-    };
+    return { absLabel: "—", pctLabel: "—", note: "No prior week", className: "wow-neutral", sortValue: Number.NEGATIVE_INFINITY };
   }
 
   if (!hasPriorMatch || priorValue === null || priorValue === undefined) {
-    return {
-      absLabel: "new",
-      pctLabel: "—",
-      note: "New vs prior week",
-      className: "wow-neutral",
-      sortValue: Number.POSITIVE_INFINITY,
-    };
+    return { absLabel: "new", pctLabel: "—", note: "New vs prior week", className: "wow-neutral", sortValue: Number.POSITIVE_INFINITY };
   }
 
   const current = toNumber(currentValue);
   const prior = toNumber(priorValue);
   if (!Number.isFinite(current) || !Number.isFinite(prior)) {
-    return {
-      absLabel: "—",
-      pctLabel: "—",
-      note: "No data",
-      className: "wow-neutral",
-      sortValue: Number.NEGATIVE_INFINITY,
-    };
+    return { absLabel: "—", pctLabel: "—", note: "No data", className: "wow-neutral", sortValue: Number.NEGATIVE_INFINITY };
   }
 
   const abs = current - prior;
   const pct = prior === 0 ? null : abs / prior;
   const good = inverse ? abs < 0 : abs > 0;
   const bad = inverse ? abs > 0 : abs < 0;
-  const className = good ? "wow-good" : bad ? "wow-bad" : "wow-neutral";
 
   return {
     absLabel: formatDelta(abs, type),
     pctLabel: pct === null ? "—" : formatSignedPercent(pct),
     note: prior === 0 ? "Prior week = 0" : "vs prior week",
-    className,
+    className: good ? "wow-good" : bad ? "wow-bad" : "wow-neutral",
     sortValue: abs,
   };
 }
@@ -767,16 +731,6 @@ function mapRow(raw) {
     revenuePerOrder: safeDivide(revenue, orderUv),
   };
 }
-
-function readFileAsText(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsText(file, "utf-8");
-  });
-}
-
 function parseCsv(text) {
   const rows = [];
   let row = [];
@@ -866,10 +820,7 @@ function parseWeekSortInfo(label) {
   if (!matched) {
     return null;
   }
-  return {
-    start: Number(matched[1]),
-    end: Number(matched[2]),
-  };
+  return { start: Number(matched[1]), end: Number(matched[2]) };
 }
 
 function parseNumber(value) {
@@ -905,15 +856,12 @@ function safeDivide(numerator, denominator) {
   return num / den;
 }
 
-function normalizeText(value) {
-  return String(value ?? "").trim();
+function toNumber(value) {
+  return typeof value === "number" ? value : parseNumber(value);
 }
 
-function toNumber(value) {
-  if (typeof value === "number") {
-    return value;
-  }
-  return parseNumber(value);
+function normalizeText(value) {
+  return String(value ?? "").trim();
 }
 
 function formatValue(value, type) {
@@ -937,9 +885,7 @@ function formatNumber(value) {
   if (!Number.isFinite(number)) {
     return "-";
   }
-  return new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 0,
-  }).format(number);
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(number);
 }
 
 function formatPercent(value) {
@@ -969,10 +915,7 @@ function formatCurrency(value) {
 
 function shortFlow(flow) {
   const parts = String(flow || "").split(/\s+/).filter(Boolean);
-  if (!parts.length) {
-    return "";
-  }
-  return parts.slice(0, 2).map((part) => part[0]).join("").toUpperCase();
+  return parts.length ? parts.slice(0, 2).map((part) => part[0]).join("").toUpperCase() : "";
 }
 
 function escapeHtml(value) {
