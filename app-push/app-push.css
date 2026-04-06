@@ -1,194 +1,477 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>APP Push Dashboard</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="./app-push.css" />
-</head>
-<body>
-  <div class="page-shell">
-    <header class="dashboard-header">
-      <div class="header-main">
-        <p class="eyebrow">APP Push Dashboard</p>
-        <h1 class="page-title">Campaign Performance Report</h1>
-        <p id="headerSummary" class="page-summary">
-          Current Period: -- ｜ Compare Period: -- ｜ Push Filter: All Push
-        </p>
-      </div>
-    </header>
+:root {
+  --bg: #f5f1ea;
+  --card: #fffdf9;
+  --line: #e7ddd0;
+  --ink: #231c16;
+  --sub: #7a6c5f;
+  --accent: #0b5cab;
+  --accent-soft: #e8f0f8;
+  --good: #1f7a4c;
+  --bad: #b84535;
+  --warn: #a77622;
+  --muted: #9b9388;
+  --shadow: 0 12px 36px rgba(35, 28, 22, 0.06);
+}
 
-    <main class="dashboard">
-      <!-- Section 01 -->
-      <section class="section">
-        <div class="section-head">
-          <div>
-            <p class="section-kicker">Section 01</p>
-            <h2 class="section-title">Global Filters</h2>
-            <p class="section-sub">Select the current period, comparison period, and push classification view.</p>
-          </div>
-        </div>
-        <div class="section-body">
-          <div class="filter-grid">
-            <label class="control">
-              <span>Current Start</span>
-              <input id="currentStart" type="date" />
-            </label>
+* {
+  box-sizing: border-box;
+}
 
-            <label class="control">
-              <span>Current End</span>
-              <input id="currentEnd" type="date" />
-            </label>
+body {
+  margin: 0;
+  color: var(--ink);
+  font-family: "IBM Plex Sans", "Avenir Next", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background:
+    radial-gradient(circle at 0% 0%, #fdeedc 0, transparent 30%),
+    radial-gradient(circle at 100% 100%, #eaf4f1 0, transparent 28%),
+    var(--bg);
+  font-variant-numeric: tabular-nums lining-nums;
+}
 
-            <label class="control">
-              <span>Compare Start</span>
-              <input id="compareStart" type="date" />
-            </label>
+button,
+input,
+select {
+  font: inherit;
+}
 
-            <label class="control">
-              <span>Compare End</span>
-              <input id="compareEnd" type="date" />
-            </label>
+.page-shell {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 24px 16px 44px;
+}
 
-            <label class="control">
-              <span>Push Name</span>
-              <select id="pushTypeFilter">
-                <option value="all">All Push</option>
-                <option value="current">Current Push</option>
-                <option value="previous">Previous</option>
-              </select>
-            </label>
+.dashboard-header {
+  margin-bottom: 14px;
+}
 
-            <label class="control">
-              <span>Search Push</span>
-              <input id="pushSearch" type="search" placeholder="Search push name" />
-            </label>
-          </div>
+.eyebrow,
+.section-kicker {
+  margin: 0 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--sub);
+}
 
-          <div class="filter-actions">
-            <button id="applyDateRange" class="secondary-button" type="button">Apply Filters</button>
-            <button id="usePreviousPeriod" class="secondary-button" type="button">Auto Previous Period</button>
-          </div>
+.page-title {
+  margin: 0;
+  font-size: 40px;
+  font-weight: 900;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+}
 
-          <p id="fileMeta" class="section-note">Loading app-push repository data...</p>
-        </div>
-      </section>
+.page-summary {
+  margin: 8px 0 0;
+  color: var(--sub);
+  font-size: 14px;
+  line-height: 1.5;
+}
 
-      <!-- Section 02 -->
-      <section class="section">
-        <div class="section-head">
-          <div>
-            <p class="section-kicker">Section 02</p>
-            <h2 class="section-title">Weekly Overview</h2>
-            <p id="overviewContext" class="section-sub">Current period KPI summary and period-over-period movement.</p>
-          </div>
-        </div>
-        <div class="section-body">
-          <div id="overviewGrid" class="overview-grid">
-            <div class="empty-state">Loading app-push KPI data...</div>
-          </div>
-        </div>
-      </section>
+.dashboard {
+  display: grid;
+  gap: 14px;
+}
 
-      <!-- Section 03 -->
-      <section class="section">
-        <div class="section-head">
-          <div>
-            <p class="section-kicker">Section 03</p>
-            <h2 class="section-title">Push Performance</h2>
-            <p id="pushTableContext" class="section-sub">Push-level performance based on selected period and push classification.</p>
-          </div>
-        </div>
-        <div class="section-body">
-          <div class="table-wrap">
-            <table id="pushTable">
-              <thead></thead>
-              <tbody>
-                <tr>
-                  <td class="empty-cell">Loading app-push table...</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
+.section {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px;
+  box-shadow: var(--shadow);
+}
 
-      <!-- Section 04 -->
-      <section class="section">
-        <div class="section-head">
-          <div>
-            <p class="section-kicker">Section 04</p>
-            <h2 class="section-title">Contribution Analysis</h2>
-            <p class="section-sub">Compare how current push and previous push contribute to traffic and revenue.</p>
-          </div>
-        </div>
-        <div class="section-body">
-          <div class="chart-grid contribution-grid two-up">
-            <div class="chart-card">
-              <h3>Sessions Share</h3>
-              <div id="sessionsShareChart" class="bar-chart empty-chart"></div>
-            </div>
-            <div class="chart-card">
-              <h3>Revenue Share</h3>
-              <div id="revenueShareChart" class="bar-chart empty-chart"></div>
-            </div>
-          </div>
-        </div>
-      </section>
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
 
-      <!-- Section 05 -->
-      <section class="section">
-        <div class="section-head">
-          <div>
-            <p class="section-kicker">Section 05</p>
-            <h2 class="section-title">Daily Trends</h2>
-            <p class="section-sub">Daily trends for the selected current period.</p>
-          </div>
-        </div>
-        <div class="section-body">
-          <div id="trendGrid" class="chart-grid trends-grid">
-            <div class="chart-card empty-chart">Loading app-push trend charts...</div>
-          </div>
-        </div>
-      </section>
+.section-title {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.15;
+}
 
-      <!-- Section 06 -->
-      <section class="section">
-        <div class="section-head">
-          <div>
-            <p class="section-kicker">Section 06</p>
-            <h2 class="section-title">Notes / Validation</h2>
-            <p class="section-sub">Push classification logic and excluded rows.</p>
-          </div>
-        </div>
-        <div class="section-body">
-          <div class="note-box">
-            <ul>
-              <li><strong>Current Push</strong>: push name date falls inside the current selected period.</li>
-              <li><strong>Previous</strong>: push name date is earlier than the current selected period start.</li>
-              <li><strong>Future / Invalid</strong>: push name date is later than the current selected period end, and is excluded by default.</li>
-              <li>Metrics are based on 日期 / 带来会话的人工字词 / 会话数 / 用户总数 / 总购买人数 / 总收入.</li>
-            </ul>
-          </div>
+.section-sub {
+  margin: 4px 0 0;
+  color: var(--sub);
+  font-size: 12px;
+  line-height: 1.45;
+}
 
-          <div class="table-wrap">
-            <table id="excludedTable">
-              <thead></thead>
-              <tbody>
-                <tr>
-                  <td class="empty-cell">No excluded push rows yet.</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-    </main>
-  </div>
+.section-body {
+  display: grid;
+  gap: 10px;
+}
 
-  <script src="./app-push.js"></script>
-</body>
-</html>
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.control {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.control span {
+  font-size: 12px;
+  color: var(--sub);
+  font-weight: 600;
+}
+
+.control input,
+.control select {
+  min-height: 40px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0 12px;
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.control input:focus,
+.control select:focus {
+  border-color: #cbbda9;
+  box-shadow: 0 0 0 3px rgba(167, 118, 34, 0.08);
+}
+
+.filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.secondary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  cursor: pointer;
+  font-weight: 700;
+  white-space: nowrap;
+  background: #fff;
+  color: var(--ink);
+}
+
+.secondary-button:hover {
+  background: #f8f3ed;
+}
+
+.section-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--sub);
+  line-height: 1.5;
+}
+
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.metric-card {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 12px;
+  padding: 10px;
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.metric-label {
+  margin: 0;
+  font-size: 12px;
+  color: var(--sub);
+  line-height: 1.25;
+}
+
+.metric-value {
+  margin: 8px 0 6px;
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+
+.metric-wow {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.metric-wow-arrow {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.wow-good {
+  color: var(--good);
+}
+
+.wow-bad {
+  color: var(--bad);
+}
+
+.wow-neutral {
+  color: var(--muted);
+}
+
+.table-wrap {
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 1100px;
+  font-size: 12px;
+}
+
+th,
+td {
+  padding: 9px 10px;
+  border-bottom: 1px solid #efe6da;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+th {
+  background: #faf5ed;
+  text-align: left;
+}
+
+tbody tr:hover {
+  background: #fcf8f2;
+}
+
+.empty-cell,
+.empty-state,
+.empty-chart {
+  display: grid;
+  place-items: center;
+  min-height: 110px;
+  color: var(--sub);
+  font-size: 13px;
+}
+
+.chart-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.contribution-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.two-up {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.trends-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.chart-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  padding: 12px;
+}
+
+.chart-card h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.chart-caption,
+.legend-note {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--sub);
+}
+
+.bar-chart,
+.line-chart {
+  margin-top: 12px;
+}
+
+.bar-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.2fr) minmax(0, 2.8fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.bar-label {
+  font-size: 12px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bar-track {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: #ede4d8;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #c79d63 0%, #a77622 100%);
+}
+
+.bar-value {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.line-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.axis-label,
+.tick-label {
+  font-size: 12px;
+  fill: var(--sub);
+}
+
+.grid-line {
+  stroke: #e7ddd0;
+  stroke-width: 1;
+}
+
+.line-path {
+  fill: none;
+  stroke: #a77622;
+  stroke-width: 3;
+}
+
+.line-dot {
+  fill: #a77622;
+}
+
+.line-value {
+  font-size: 11px;
+  fill: var(--ink);
+}
+
+.note-box {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  padding: 10px 12px;
+}
+
+.note-box ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.note-box li {
+  margin: 4px 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.push-type-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+
+.push-current {
+  color: var(--good);
+  background: #eef8f2;
+  border-color: #cfe8d8;
+}
+
+.push-previous {
+  color: var(--warn);
+  background: #fbf4e8;
+  border-color: #ead7b5;
+}
+
+.push-invalid {
+  color: var(--bad);
+  background: #fdeeee;
+  border-color: #f1cfcf;
+}
+
+@media (max-width: 1200px) {
+  .filter-grid,
+  .overview-grid,
+  .two-up,
+  .trends-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .section-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 720px) {
+  .page-shell {
+    padding: 18px 12px 32px;
+  }
+
+  .page-title {
+    font-size: 30px;
+  }
+
+  .filter-grid,
+  .overview-grid,
+  .two-up,
+  .trends-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .section {
+    padding: 12px;
+    border-radius: 14px;
+  }
+
+  .metric-value {
+    font-size: 22px;
+  }
+
+  .secondary-button {
+    width: 100%;
+  }
+}
