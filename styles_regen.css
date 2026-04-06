@@ -186,8 +186,8 @@ button, input, select { font: inherit; }
 }
 
 .metric-value {
-  margin: 8px 0 10px;
-  font-size: clamp(18px, 2vw, 28px);
+  margin: 4px 0 2px;
+  font-size: clamp(18px, 2vw, 26px);
   font-weight: 700;
   line-height: 1.05;
 }
@@ -195,13 +195,14 @@ button, input, select { font: inherit; }
 .metric-wow {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   font-weight: 700;
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 1;
 }
 
 .metric-wow-arrow {
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1;
 }
 
