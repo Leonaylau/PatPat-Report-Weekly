@@ -1,1 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>APP Push Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./app-push.css" />
+</head>
+<body>
+  <div class="page-shell">
+    <header class="dashboard-header">
+      <div class="header-main">
+        <p class="eyebrow">APP Push Dashboard</p>
+        <h1 class="page-title">Campaign Performance Report</h1>
+        <p id="headerSummary" class="page-summary">
+          Current Period: -- ｜ Compare Period: -- ｜ Push Filter: All Push
+        </p>
+      </div>
+    </header>
 
+    <main class="dashboard">
+      <!-- Section 01 -->
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Section 01</p>
+            <h2 class="section-title">Global Filters</h2>
+            <p class="section-sub">Select the current period, comparison period, and push classification view.</p>
+          </div>
+        </div>
+        <div class="section-body">
+          <div class="filter-grid">
+            <label class="control">
+              <span>Current Start</span>
+              <input id="currentStart" type="date" />
+            </label>
+
+            <label class="control">
+              <span>Current End</span>
+              <input id="currentEnd" type="date" />
+            </label>
+
+            <label class="control">
+              <span>Compare Start</span>
+              <input id="compareStart" type="date" />
+            </label>
+
+            <label class="control">
+              <span>Compare End</span>
+              <input id="compareEnd" type="date" />
+            </label>
+
+            <label class="control">
+              <span>Push Name</span>
+              <select id="pushTypeFilter">
+                <option value="all">All Push</option>
+                <option value="current">Current Push</option>
+                <option value="previous">Previous</option>
+              </select>
+            </label>
+
+            <label class="control">
+              <span>Search Push</span>
+              <input id="pushSearch" type="search" placeholder="Search push name" />
+            </label>
+          </div>
+
+          <div class="filter-actions">
+            <button id="applyDateRange" class="secondary-button" type="button">Apply Filters</button>
+            <button id="usePreviousPeriod" class="secondary-button" type="button">Auto Previous Period</button>
+          </div>
+
+          <p id="fileMeta" class="section-note">Loading app-push repository data...</p>
+        </div>
+      </section>
+
+      <!-- Section 02 -->
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Section 02</p>
+            <h2 class="section-title">Weekly Overview</h2>
+            <p id="overviewContext" class="section-sub">Current period KPI summary and period-over-period movement.</p>
+          </div>
+        </div>
+        <div class="section-body">
+          <div id="overviewGrid" class="overview-grid">
+            <div class="empty-state">Loading app-push KPI data...</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 03 -->
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Section 03</p>
+            <h2 class="section-title">Push Performance</h2>
+            <p id="pushTableContext" class="section-sub">Push-level performance based on selected period and push classification.</p>
+          </div>
+        </div>
+        <div class="section-body">
+          <div class="table-wrap">
+            <table id="pushTable">
+              <thead></thead>
+              <tbody>
+                <tr>
+                  <td class="empty-cell">Loading app-push table...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 04 -->
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Section 04</p>
+            <h2 class="section-title">Contribution Analysis</h2>
+            <p class="section-sub">Compare how current push and previous push contribute to traffic and revenue.</p>
+          </div>
+        </div>
+        <div class="section-body">
+          <div class="chart-grid contribution-grid two-up">
+            <div class="chart-card">
+              <h3>Sessions Share</h3>
+              <div id="sessionsShareChart" class="bar-chart empty-chart"></div>
+            </div>
+            <div class="chart-card">
+              <h3>Revenue Share</h3>
+              <div id="revenueShareChart" class="bar-chart empty-chart"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 05 -->
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Section 05</p>
+            <h2 class="section-title">Daily Trends</h2>
+            <p class="section-sub">Daily trends for the selected current period.</p>
+          </div>
+        </div>
+        <div class="section-body">
+          <div id="trendGrid" class="chart-grid trends-grid">
+            <div class="chart-card empty-chart">Loading app-push trend charts...</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 06 -->
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Section 06</p>
+            <h2 class="section-title">Notes / Validation</h2>
+            <p class="section-sub">Push classification logic and excluded rows.</p>
+          </div>
+        </div>
+        <div class="section-body">
+          <div class="note-box">
+            <ul>
+              <li><strong>Current Push</strong>: push name date falls inside the current selected period.</li>
+              <li><strong>Previous</strong>: push name date is earlier than the current selected period start.</li>
+              <li><strong>Future / Invalid</strong>: push name date is later than the current selected period end, and is excluded by default.</li>
+              <li>Metrics are based on 日期 / 带来会话的人工字词 / 会话数 / 用户总数 / 总购买人数 / 总收入.</li>
+            </ul>
+          </div>
+
+          <div class="table-wrap">
+            <table id="excludedTable">
+              <thead></thead>
+              <tbody>
+                <tr>
+                  <td class="empty-cell">No excluded push rows yet.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="./app-push.js"></script>
+</body>
+</html>
