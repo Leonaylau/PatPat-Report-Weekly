@@ -6,8 +6,9 @@ const state = {
   currentEnd: "",
   compareStart: "",
   compareEnd: "",
-  pushTypeFilter: "all",
+  pushCategoryFilter: "all",
   pushSearch: "",
+  zeroRowFilter: "show",
 };
 
 const overviewMetrics = [
@@ -35,15 +36,29 @@ function bindEvents() {
     applyFiltersAndRender();
   });
 
-  document.getElementById("pushTypeFilter").addEventListener("change", (e) => {
-    state.pushTypeFilter = e.target.value;
-    applyFiltersAndRender();
-  });
+  const pushCategoryFilter = document.getElementById("pushCategoryFilter");
+  if (pushCategoryFilter) {
+    pushCategoryFilter.addEventListener("change", (e) => {
+      state.pushCategoryFilter = e.target.value;
+      applyFiltersAndRender();
+    });
+  }
 
-  document.getElementById("pushSearch").addEventListener("input", (e) => {
-    state.pushSearch = e.target.value.trim().toLowerCase();
-    applyFiltersAndRender();
-  });
+  const pushSearch = document.getElementById("pushSearch");
+  if (pushSearch) {
+    pushSearch.addEventListener("input", (e) => {
+      state.pushSearch = e.target.value.trim().toLowerCase();
+      applyFiltersAndRender();
+    });
+  }
+
+  const zeroRowFilter = document.getElementById("zeroRowFilter");
+  if (zeroRowFilter) {
+    zeroRowFilter.addEventListener("change", (e) => {
+      state.zeroRowFilter = e.target.value;
+      applyFiltersAndRender();
+    });
+  }
 }
 
 async function initializePushData() {
@@ -108,9 +123,10 @@ function parsePushCsv(text) {
 
   const csvText = cleanLines.join("\n");
   const records = parseCsv(csvText);
+
   const rows = records
     .map(mapPushRow)
-    .filter((row) => row.dateObj && row.pushName);
+    .filter((row) => row.dateObj && row.pushName && row.pushName.toLowerCase() !== "grand total");
 
   return { rows };
 }
@@ -171,56 +187,42 @@ function applyFiltersAndRender() {
   }
 
   const classified = state.rawRows.map((row) => {
-    const pushClass = classifyPush(row.pushName, currentStart, currentEnd);
-    return { ...row, pushClass };
+    const pushCategory = classifyPushCategory(row.pushName);
+    return { ...row, pushCategory };
   });
 
-  state.excludedRows = classified.filter((row) => row.pushClass === "invalid");
+  state.excludedRows = [];
 
   state.filteredRows = classified.filter((row) => {
-    if (row.pushClass === "invalid") return false;
-
     const inCurrentDateRange = row.dateObj >= currentStart && row.dateObj <= currentEnd;
     if (!inCurrentDateRange) return false;
 
-    const pushFilterMatch =
-      state.pushTypeFilter === "all" ||
-      (state.pushTypeFilter === "current" && row.pushClass === "current") ||
-      (state.pushTypeFilter === "previous" && row.pushClass === "previous");
+    const categoryMatch =
+      state.pushCategoryFilter === "all" ||
+      (state.pushCategoryFilter === "manual" && row.pushCategory === "manual") ||
+      (state.pushCategoryFilter === "automation" && row.pushCategory === "automation");
 
     const searchMatch =
       !state.pushSearch || row.pushName.toLowerCase().includes(state.pushSearch);
 
-    return pushFilterMatch && searchMatch;
+    const zeroRowMatch =
+      state.zeroRowFilter === "show" ||
+      !(
+        (toNumber(row.sessions) || 0) === 0 &&
+        (toNumber(row.users) || 0) === 0 &&
+        (toNumber(row.purchasers) || 0) === 0 &&
+        (toNumber(row.revenue) || 0) === 0
+      );
+
+    return categoryMatch && searchMatch && zeroRowMatch;
   });
 
   renderAll();
 }
 
-function classifyPush(pushName, currentStart, currentEnd) {
-  const mmdd = extractPushMMDD(pushName);
-  if (!mmdd) return "invalid";
-
-  const year = currentStart.getFullYear();
-  const pushDate = mmddToDate(mmdd, year);
-  if (!pushDate) return "invalid";
-
-  if (pushDate > currentEnd) return "invalid";
-  if (pushDate < currentStart) return "previous";
-  return "current";
-}
-
-function extractPushMMDD(pushName) {
-  const match = String(pushName || "").match(/push(\d{4})/i);
-  return match ? match[1] : null;
-}
-
-function mmddToDate(mmdd, year) {
-  if (!mmdd || mmdd.length !== 4) return null;
-  const month = Number(mmdd.slice(0, 2));
-  const day = Number(mmdd.slice(2, 4));
-  if (!month || !day) return null;
-  return new Date(year, month - 1, day);
+function classifyPushCategory(pushName) {
+  const name = String(pushName || "").trim().toLowerCase();
+  return name.startsWith("push") ? "manual" : "automation";
 }
 
 function renderAll() {
@@ -233,14 +235,14 @@ function renderAll() {
 }
 
 function renderHeaderSummary() {
-  const label = {
-    all: "All Push",
-    current: "Current Push",
-    previous: "Previous",
-  }[state.pushTypeFilter];
+  const labelMap = {
+    all: "All",
+    manual: "Manual Push",
+    automation: "Automation Push",
+  };
 
   document.getElementById("headerSummary").textContent =
-    `Current Period: ${state.currentStart || "--"} ~ ${state.currentEnd || "--"} ｜ Compare Period: ${state.compareStart || "--"} ~ ${state.compareEnd || "--"} ｜ Push Filter: ${label}`;
+    `Current Period: ${state.currentStart || "--"} ~ ${state.currentEnd || "--"} ｜ Compare Period: ${state.compareStart || "--"} ~ ${state.compareEnd || "--"} ｜ Push Category: ${labelMap[state.pushCategoryFilter]}`;
 }
 
 function renderOverview() {
@@ -254,7 +256,6 @@ function renderOverview() {
   }
 
   const currentAgg = aggregateRows(state.filteredRows);
-
   const compareRows = getCompareRows();
   const compareAgg = aggregateRows(compareRows);
 
@@ -289,16 +290,31 @@ function getCompareRows() {
 
   return state.rawRows
     .map((row) => {
-      const pushClass = classifyPush(row.pushName, compareStart, compareEnd);
-      return { ...row, pushClass };
+      const pushCategory = classifyPushCategory(row.pushName);
+      return { ...row, pushCategory };
     })
     .filter((row) => {
-      if (row.pushClass === "invalid") return false;
-      if (!(row.dateObj >= compareStart && row.dateObj <= compareEnd)) return false;
+      const inCompareDateRange = row.dateObj >= compareStart && row.dateObj <= compareEnd;
+      if (!inCompareDateRange) return false;
 
-      if (state.pushTypeFilter === "current") return row.pushClass === "current";
-      if (state.pushTypeFilter === "previous") return row.pushClass === "previous";
-      return true;
+      const categoryMatch =
+        state.pushCategoryFilter === "all" ||
+        (state.pushCategoryFilter === "manual" && row.pushCategory === "manual") ||
+        (state.pushCategoryFilter === "automation" && row.pushCategory === "automation");
+
+      const searchMatch =
+        !state.pushSearch || row.pushName.toLowerCase().includes(state.pushSearch);
+
+      const zeroRowMatch =
+        state.zeroRowFilter === "show" ||
+        !(
+          (toNumber(row.sessions) || 0) === 0 &&
+          (toNumber(row.users) || 0) === 0 &&
+          (toNumber(row.purchasers) || 0) === 0 &&
+          (toNumber(row.revenue) || 0) === 0
+        );
+
+      return categoryMatch && searchMatch && zeroRowMatch;
     });
 }
 
@@ -321,14 +337,14 @@ function renderPushTable() {
   const context = document.getElementById("pushTableContext");
 
   context.textContent =
-    `Current: ${state.currentStart} ~ ${state.currentEnd} · Filter: ${document.getElementById("pushTypeFilter").selectedOptions[0].text}`;
+    `Current: ${state.currentStart} ~ ${state.currentEnd} · Category: ${document.getElementById("pushCategoryFilter")?.selectedOptions?.[0]?.text || "All"}`;
 
   const grouped = groupByPushName(state.filteredRows);
 
   thead.innerHTML = `
     <tr>
       <th>Push Name</th>
-      <th>Push Type</th>
+      <th>Push Category</th>
       <th>Sessions</th>
       <th>Users</th>
       <th>Purchasers</th>
@@ -344,7 +360,7 @@ function renderPushTable() {
   tbody.innerHTML = grouped.map((row) => `
     <tr>
       <td>${escapeHtml(row.pushName)}</td>
-      <td>${renderPushTypePill(row.pushClass)}</td>
+      <td>${renderPushCategoryPill(row.pushCategory)}</td>
       <td>${escapeHtml(formatNumber(row.sessions))}</td>
       <td>${escapeHtml(formatNumber(row.users))}</td>
       <td>${escapeHtml(formatNumber(row.purchasers))}</td>
@@ -361,7 +377,7 @@ function groupByPushName(rows) {
     if (!map.has(key)) {
       map.set(key, {
         pushName: row.pushName,
-        pushClass: row.pushClass,
+        pushCategory: row.pushCategory,
         sessions: 0,
         users: 0,
         purchasers: 0,
@@ -379,52 +395,50 @@ function groupByPushName(rows) {
   return [...map.values()].sort((a, b) => b.sessions - a.sessions);
 }
 
-function renderPushTypePill(type) {
+function renderPushCategoryPill(type) {
   const labelMap = {
-    current: "Current Push",
-    previous: "Previous",
-    invalid: "Invalid",
+    manual: "Manual Push",
+    automation: "Automation Push",
   };
 
   const classMap = {
-    current: "push-type-pill push-current",
-    previous: "push-type-pill push-previous",
-    invalid: "push-type-pill push-invalid",
+    manual: "push-type-pill push-current",
+    automation: "push-type-pill push-previous",
   };
 
   return `<span class="${classMap[type]}">${labelMap[type]}</span>`;
 }
 
 function renderContributionCharts() {
-  const grouped = groupByPushClass(state.filteredRows);
+  const grouped = groupByPushCategory(state.filteredRows);
 
   renderBarChart(
     document.getElementById("sessionsShareChart"),
-    buildShareDataFromClass(grouped, "sessions")
+    buildShareDataFromCategory(grouped, "sessions")
   );
 
   renderBarChart(
     document.getElementById("revenueShareChart"),
-    buildShareDataFromClass(grouped, "revenue")
+    buildShareDataFromCategory(grouped, "revenue")
   );
 }
 
-function groupByPushClass(rows) {
+function groupByPushCategory(rows) {
   const base = {
-    current: { label: "Current Push", sessions: 0, revenue: 0 },
-    previous: { label: "Previous", sessions: 0, revenue: 0 },
+    manual: { label: "Manual Push", sessions: 0, revenue: 0 },
+    automation: { label: "Automation Push", sessions: 0, revenue: 0 },
   };
 
   rows.forEach((row) => {
-    if (!base[row.pushClass]) return;
-    base[row.pushClass].sessions += toNumber(row.sessions) || 0;
-    base[row.pushClass].revenue += toNumber(row.revenue) || 0;
+    if (!base[row.pushCategory]) return;
+    base[row.pushCategory].sessions += toNumber(row.sessions) || 0;
+    base[row.pushCategory].revenue += toNumber(row.revenue) || 0;
   });
 
   return Object.values(base);
 }
 
-function buildShareDataFromClass(rows, key) {
+function buildShareDataFromCategory(rows, key) {
   const total = rows.reduce((sum, row) => sum + (toNumber(row[key]) || 0), 0);
   return rows.map((row) => ({
     label: row.label,
@@ -566,7 +580,7 @@ function renderExcludedTable() {
     <tr>
       <td>${escapeHtml(row.date)}</td>
       <td>${escapeHtml(row.pushName)}</td>
-      <td>Future / Invalid push name date</td>
+      <td>Excluded by classification rule</td>
     </tr>
   `).join("");
 }
@@ -762,8 +776,4 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
-}
-
-function escapeAttribute(value) {
-  return escapeHtml(value).replace(/`/g, "&#96;");
 }
