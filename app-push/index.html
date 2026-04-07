@@ -95,26 +95,53 @@
 
       <!-- Section 03 -->
       <section class="section">
-        <div class="section-head">
-          <div>
-            <p class="section-kicker">Section 03</p>
-            <h2 class="section-title">Push Performance</h2>
-            <p id="pushTableContext" class="section-sub">Push-level performance based on selected period and push classification.</p>
-          </div>
-        </div>
-        <div class="section-body">
-          <div class="table-wrap">
-            <table id="pushTable">
-              <thead></thead>
-              <tbody>
-                <tr>
-                  <td class="empty-cell">Loading app-push table...</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
+  <div class="section-head">
+    <div>
+      <p class="section-kicker">Section 03</p>
+      <h2 class="section-title">Push Performance</h2>
+      <p id="pushTableContext" class="section-sub">
+        Push-level performance based on selected period and push classification.
+      </p>
+    </div>
+
+    <div class="section-actions">
+      <label class="control compact-control">
+        <span>Push Category</span>
+        <select id="pushCategoryFilter">
+          <option value="all">All</option>
+          <option value="manual">Manual Push</option>
+          <option value="automation">Automation Push</option>
+        </select>
+      </label>
+
+      <label class="control compact-control">
+        <span>Search Push</span>
+        <input id="pushSearch" type="search" placeholder="Search push name" />
+      </label>
+
+      <label class="control compact-control">
+        <span>Zero Rows</span>
+        <select id="zeroRowFilter">
+          <option value="show">Show All Rows</option>
+          <option value="hide">Hide Zero Rows</option>
+        </select>
+      </label>
+    </div>
+  </div>
+
+  <div class="section-body">
+    <div class="table-wrap">
+      <table id="pushTable">
+        <thead></thead>
+        <tbody>
+          <tr>
+            <td class="empty-cell">Loading app-push table...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
 
       <!-- Section 04 -->
       <section class="section">
