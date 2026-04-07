@@ -116,18 +116,18 @@ function parsePushCsv(text) {
 }
 
 function mapPushRow(raw) {
-  const dateText = normalizeText(raw["日期"]);
-  const pushName = normalizeText(raw["带来会话的人工字词"]);
+  const dateText = normalizeText(raw["Date"]);
+  const pushName = normalizeText(raw["Session manual term"]);
   const dateObj = parseFlexibleDate(dateText);
 
   return {
     date: dateText,
     dateObj,
     pushName,
-    sessions: parseNumber(raw["会话数"]),
-    users: parseNumber(raw["用户总数"]),
-    purchasers: parseNumber(raw["总购买人数"]),
-    revenue: parseNumber(raw["总收入"]),
+    sessions: parseNumber(raw["Sessions"]),
+    users: parseNumber(raw["Total users"]),
+    purchasers: parseNumber(raw["Total purchasers"]),
+    revenue: parseNumber(raw["Total revenue"]),
   };
 }
 
@@ -645,8 +645,19 @@ function parseCsv(text) {
 function parseFlexibleDate(value) {
   if (!value) return null;
   const raw = String(value).trim();
+
+  const compact = raw.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (compact) {
+    const year = Number(compact[1]);
+    const month = Number(compact[2]);
+    const day = Number(compact[3]);
+    return new Date(year, month - 1, day);
+  }
+
   const tryDate = new Date(raw);
-  if (!isNaN(tryDate.getTime())) return new Date(tryDate.getFullYear(), tryDate.getMonth(), tryDate.getDate());
+  if (!isNaN(tryDate.getTime())) {
+    return new Date(tryDate.getFullYear(), tryDate.getMonth(), tryDate.getDate());
+  }
 
   const m = raw.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/);
   if (m) {
