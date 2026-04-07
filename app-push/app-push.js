@@ -193,29 +193,7 @@ function applyFiltersAndRender() {
 
   state.excludedRows = [];
 
-  state.filteredRows = classified.filter((row) => {
-    const inCurrentDateRange = row.dateObj >= currentStart && row.dateObj <= currentEnd;
-    if (!inCurrentDateRange) return false;
-
-    const categoryMatch =
-      state.pushCategoryFilter === "all" ||
-      (state.pushCategoryFilter === "manual" && row.pushCategory === "manual") ||
-      (state.pushCategoryFilter === "automation" && row.pushCategory === "automation");
-
-    const searchMatch =
-      !state.pushSearch || row.pushName.toLowerCase().includes(state.pushSearch);
-
-    const zeroRowMatch =
-      state.zeroRowFilter === "show" ||
-      !(
-        (toNumber(row.sessions) || 0) === 0 &&
-        (toNumber(row.users) || 0) === 0 &&
-        (toNumber(row.purchasers) || 0) === 0 &&
-        (toNumber(row.revenue) || 0) === 0
-      );
-
-    return categoryMatch && searchMatch && zeroRowMatch;
-  });
+  state.filteredRows = classified.filter((row) => isRowIncluded(row, currentStart, currentEnd));
 
   renderAll();
 }
@@ -274,6 +252,7 @@ function renderOverview() {
       <article class="metric-card">
         <p class="metric-label">${escapeHtml(metric.label)}</p>
         <p class="metric-value">${escapeHtml(formatValue(currentAgg[metric.key], metric.type))}</p>
+        <p class="metric-compare">Compare: ${escapeHtml(formatValue(compareAgg[metric.key], metric.type))}</p>
         <div class="metric-wow ${wow.className}">
           <span class="metric-wow-arrow">${escapeHtml(wow.arrow)}</span>
           <span class="metric-wow-value">${escapeHtml(wow.pctOnlyLabel)}</span>
@@ -293,29 +272,25 @@ function getCompareRows() {
       const pushCategory = classifyPushCategory(row.pushName);
       return { ...row, pushCategory };
     })
-    .filter((row) => {
-      const inCompareDateRange = row.dateObj >= compareStart && row.dateObj <= compareEnd;
-      if (!inCompareDateRange) return false;
+    .filter((row) => isRowIncluded(row, compareStart, compareEnd));
+}
 
-      const categoryMatch =
-        state.pushCategoryFilter === "all" ||
-        (state.pushCategoryFilter === "manual" && row.pushCategory === "manual") ||
-        (state.pushCategoryFilter === "automation" && row.pushCategory === "automation");
+function isRowIncluded(row, startDate, endDate) {
+  const inDateRange = row.dateObj >= startDate && row.dateObj <= endDate;
+  if (!inDateRange) return false;
 
-      const searchMatch =
-        !state.pushSearch || row.pushName.toLowerCase().includes(state.pushSearch);
+  const categoryMatch =
+    state.pushCategoryFilter === "all" ||
+    (state.pushCategoryFilter === "manual" && row.pushCategory === "manual") ||
+    (state.pushCategoryFilter === "automation" && row.pushCategory === "automation");
 
-      const zeroRowMatch =
-        state.zeroRowFilter === "show" ||
-        !(
-          (toNumber(row.sessions) || 0) === 0 &&
-          (toNumber(row.users) || 0) === 0 &&
-          (toNumber(row.purchasers) || 0) === 0 &&
-          (toNumber(row.revenue) || 0) === 0
-        );
+  const searchMatch =
+    !state.pushSearch || row.pushName.toLowerCase().includes(state.pushSearch);
 
-      return categoryMatch && searchMatch && zeroRowMatch;
-    });
+  const zeroRowMatch =
+    state.zeroRowFilter === "show" || (toNumber(row.purchasers) || 0) !== 0;
+
+  return categoryMatch && searchMatch && zeroRowMatch;
 }
 
 function aggregateRows(rows) {
