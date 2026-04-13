@@ -505,3 +505,55 @@ tbody tr:hover {
 .compact-control span {
   font-size: 11px;
 }
+
+
+.four-up-controls {
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
+}
+
+.four-up-trends {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.pill-category-manual {
+  color: var(--good);
+  background: #eef8f2;
+  border-color: #cfe8d8;
+}
+
+.pill-category-automation {
+  color: var(--warn);
+  background: #fbf4e8;
+  border-color: #ead7b5;
+}
+
+.pill-bucket-current {
+  color: #0b5cab;
+  background: #e8f0f8;
+  border-color: #c8daef;
+}
+
+.pill-bucket-past {
+  color: var(--warn);
+  background: #fbf4e8;
+  border-color: #ead7b5;
+}
+
+.pill-bucket-automation {
+  color: var(--good);
+  background: #eef8f2;
+  border-color: #cfe8d8;
+}
+
+.pill-bucket-future,
+.pill-bucket-invalid {
+  color: var(--bad);
+  background: #fdeeee;
+  border-color: #f1cfcf;
+}
+
+@media (min-width: 1280px) {
+  .four-up-trends {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
