@@ -1,6 +1,7 @@
 const state = {
   rawRows: [],
   classifiedRows: [],
+  overviewRows: [],
   filteredRows: [],
   excludedRows: [],
   currentStart: "",
@@ -18,6 +19,8 @@ const overviewMetrics = [
   { label: "Users / UV", key: "users", type: "number", inverse: false },
   { label: "Purchasers", key: "purchasers", type: "number", inverse: false },
   { label: "Revenue", key: "revenue", type: "currency", inverse: false },
+  { label: "AOV (客单价)", key: "aov", type: "currency", inverse: false },
+  { label: "CVR (转化率)", key: "cvr", type: "rate", inverse: false },
 ];
 
 const pushCategoryLabelMap = {
@@ -210,6 +213,12 @@ function applyFiltersAndRender() {
 
   state.classifiedRows = state.rawRows.map((row) => classifyRow(row, currentStart, currentEnd));
   state.excludedRows = state.classifiedRows.filter((row) => row.pushBucket === "future" || row.pushBucket === "invalid");
+
+  state.overviewRows = state.classifiedRows.filter((row) => {
+    const inDateRange = row.dateObj >= currentStart && row.dateObj <= currentEnd;
+    return inDateRange && row.pushBucket !== "future" && row.pushBucket !== "invalid";
+  });
+
   state.filteredRows = state.classifiedRows.filter((row) => isRowIncluded(row, currentStart, currentEnd));
 
   renderAll();
@@ -329,6 +338,7 @@ function renderAll() {
   renderPushTable();
   renderContributionCharts();
   renderTrendCharts();
+  renderAutomationWeeklyDetail();
   renderExcludedTable();
 }
 
@@ -341,14 +351,22 @@ function renderOverview() {
   const container = document.getElementById("overviewGrid");
   const context = document.getElementById("overviewContext");
 
-  if (!state.filteredRows.length) {
+  if (!state.overviewRows.length) {
     context.textContent = "Current period KPI summary and period-over-period movement.";
-    container.innerHTML = '<div class="empty-state">No app-push rows match the selected filters.</div>';
+    container.innerHTML = '<div class="empty-state">No app-push rows in the selected date range.</div>';
     return;
   }
 
-  const currentAgg = aggregateRows(state.filteredRows);
-  const compareRows = getCompareRows();
+  const currentAgg = aggregateRows(state.overviewRows);
+
+  const compareStart = parseInputDate(state.compareStart);
+  const compareEnd = parseInputDate(state.compareEnd);
+  const compareRows = (compareStart && compareEnd)
+    ? state.classifiedRows.filter((row) => {
+        const inRange = row.dateObj >= compareStart && row.dateObj <= compareEnd;
+        return inRange && row.pushBucket !== "future" && row.pushBucket !== "invalid";
+      })
+    : [];
   const compareAgg = aggregateRows(compareRows);
 
   context.textContent =
@@ -385,7 +403,7 @@ function getCompareRows() {
 }
 
 function aggregateRows(rows) {
-  return rows.reduce(
+  const agg = rows.reduce(
     (acc, row) => {
       acc.sessions += toNumber(row.sessions) || 0;
       acc.users += toNumber(row.users) || 0;
@@ -395,17 +413,49 @@ function aggregateRows(rows) {
     },
     { sessions: 0, users: 0, purchasers: 0, revenue: 0 }
   );
+  agg.aov = agg.purchasers ? agg.revenue / agg.purchasers : 0;
+  agg.cvr = agg.users ? agg.purchasers / agg.users : 0;
+  return agg;
 }
 
 function renderPushTable() {
   const thead = document.querySelector("#pushTable thead");
   const tbody = document.querySelector("#pushTable tbody");
   const context = document.getElementById("pushTableContext");
+  const pushOverview = document.getElementById("pushOverviewGrid");
 
   context.textContent =
     `Current: ${state.currentStart} ~ ${state.currentEnd} · Push Category: ${pushCategoryLabelMap[state.pushCategoryFilter]} · Push Name Group: ${pushBucketLabelMap[state.pushBucketFilter]}`;
 
   const grouped = groupByPushName(state.filteredRows);
+
+  const currentAgg = aggregateRows(state.filteredRows);
+  const compareRows = getCompareRows();
+  const compareAgg = aggregateRows(compareRows);
+
+  if (!state.filteredRows.length) {
+    pushOverview.innerHTML = "";
+  } else {
+    pushOverview.innerHTML = overviewMetrics.map((metric) => {
+      const wow = buildWowObject(
+        currentAgg[metric.key],
+        compareAgg[metric.key],
+        metric.type,
+        metric.inverse
+      );
+      return `
+        <article class="metric-card">
+          <p class="metric-label">${escapeHtml(metric.label)}</p>
+          <p class="metric-value">${escapeHtml(formatValue(currentAgg[metric.key], metric.type))}</p>
+          <p class="metric-compare">Compare: ${escapeHtml(formatValue(compareAgg[metric.key], metric.type))}</p>
+          <div class="metric-wow ${wow.className}">
+            <span class="metric-wow-arrow">${escapeHtml(wow.arrow)}</span>
+            <span class="metric-wow-value">${escapeHtml(wow.pctOnlyLabel)}</span>
+          </div>
+        </article>
+      `;
+    }).join("");
+  }
 
   thead.innerHTML = `
     <tr>
@@ -417,15 +467,20 @@ function renderPushTable() {
       <th>Users / UV</th>
       <th>Purchasers</th>
       <th>Revenue</th>
+      <th>AOV (客单价)</th>
+      <th>CVR (转化率)</th>
     </tr>
   `;
 
   if (!grouped.length) {
-    tbody.innerHTML = '<tr><td class="empty-cell" colspan="8">No push rows match the current filters.</td></tr>';
+    tbody.innerHTML = '<tr><td class="empty-cell" colspan="10">No push rows match the current filters.</td></tr>';
     return;
   }
 
-  tbody.innerHTML = grouped.map((row) => `
+  tbody.innerHTML = grouped.map((row) => {
+    const aov = (toNumber(row.purchasers) || 0) ? (toNumber(row.revenue) || 0) / (toNumber(row.purchasers) || 1) : 0;
+    const cvr = (toNumber(row.users) || 0) ? (toNumber(row.purchasers) || 0) / (toNumber(row.users) || 1) : 0;
+    return `
     <tr>
       <td>${escapeHtml(row.pushName)}</td>
       <td>${renderPill(row.pushCategory, "category")}</td>
@@ -435,8 +490,10 @@ function renderPushTable() {
       <td>${escapeHtml(formatNumber(row.users))}</td>
       <td>${escapeHtml(formatNumber(row.purchasers))}</td>
       <td>${escapeHtml(formatCurrency(row.revenue))}</td>
+      <td>${escapeHtml(formatCurrency(aov))}</td>
+      <td>${escapeHtml(formatPercent(cvr))}</td>
     </tr>
-  `).join("");
+  `}).join("");
 }
 
 function groupByPushName(rows) {
@@ -674,6 +731,104 @@ function buildTickIndexes(length, maxTicks) {
   return indexes;
 }
 
+function renderAutomationWeeklyDetail() {
+  const container = document.getElementById("automationWeeklyDetail");
+  const autoRows = state.classifiedRows.filter((row) => row.pushCategory === "automation");
+
+  if (!autoRows.length) {
+    container.innerHTML = '<div class="empty-state">No automation push data available.</div>';
+    return;
+  }
+
+  const pushNames = [...new Set(autoRows.map((r) => r.pushName))].sort();
+
+  const sortedDates = autoRows
+    .map((r) => r.dateObj)
+    .filter(Boolean)
+    .sort((a, b) => a - b);
+
+  const firstWeekStart = getSunday(sortedDates[0]);
+  const lastWeekEnd = getSaturday(sortedDates[sortedDates.length - 1]);
+
+  const weekKeys = [];
+  const cursor = new Date(firstWeekStart);
+  while (cursor <= lastWeekEnd) {
+    weekKeys.push({
+      key: formatDateInput(new Date(cursor)),
+      start: new Date(cursor),
+      end: addDays(new Date(cursor), 6),
+      label: `${formatMonthDay(new Date(cursor))}-${formatMonthDay(addDays(new Date(cursor), 6))}`,
+    });
+    cursor.setDate(cursor.getDate() + 7);
+  }
+
+  container.innerHTML = pushNames.map((pushName) => {
+    const pushRows = autoRows.filter((r) => r.pushName === pushName);
+
+    const weekData = weekKeys.map((week) => {
+      const weekRows = pushRows.filter(
+        (r) => r.dateObj >= week.start && r.dateObj <= week.end
+      );
+      return {
+        label: week.label,
+        sessions: weekRows.reduce((s, r) => s + (toNumber(r.sessions) || 0), 0),
+        users: weekRows.reduce((s, r) => s + (toNumber(r.users) || 0), 0),
+        purchasers: weekRows.reduce((s, r) => s + (toNumber(r.purchasers) || 0), 0),
+        revenue: weekRows.reduce((s, r) => s + (toNumber(r.revenue) || 0), 0),
+      };
+    });
+
+    const tableRows = weekData.map((week, i) => {
+      const prev = i > 0 ? weekData[i - 1] : null;
+      const aov = week.purchasers ? week.revenue / week.purchasers : 0;
+      const cvr = week.users ? week.purchasers / week.users : 0;
+
+      const wowCell = (cur, pri) => {
+        if (!prev || !pri) return '<td class="wow-neutral">—</td>';
+        const pct = (cur - pri) / pri;
+        const cls = pct > 0 ? "wow-good" : pct < 0 ? "wow-bad" : "wow-neutral";
+        return `<td class="${cls}">${escapeHtml(formatSignedPercent(pct))}</td>`;
+      };
+
+      return `<tr>
+        <td>${escapeHtml(week.label)}</td>
+        <td>${escapeHtml(formatNumber(week.sessions))}</td>
+        ${wowCell(week.sessions, prev?.sessions)}
+        <td>${escapeHtml(formatNumber(week.users))}</td>
+        ${wowCell(week.users, prev?.users)}
+        <td>${escapeHtml(formatNumber(week.purchasers))}</td>
+        ${wowCell(week.purchasers, prev?.purchasers)}
+        <td>${escapeHtml(formatCurrency(week.revenue))}</td>
+        ${wowCell(week.revenue, prev?.revenue)}
+        <td>${escapeHtml(formatCurrency(aov))}</td>
+        <td>${escapeHtml(formatPercent(cvr))}</td>
+      </tr>`;
+    }).join("");
+
+    return `
+      <div class="automation-detail-block">
+        <h3 class="automation-detail-title">${escapeHtml(pushName)}</h3>
+        <div class="table-wrap">
+          <table class="automation-table">
+            <thead>
+              <tr>
+                <th>Week</th>
+                <th>Sessions</th><th>WoW</th>
+                <th>Users</th><th>WoW</th>
+                <th>Purchasers</th><th>WoW</th>
+                <th>Revenue</th><th>WoW</th>
+                <th>AOV</th>
+                <th>CVR</th>
+              </tr>
+            </thead>
+            <tbody>${tableRows}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
 function renderExcludedTable() {
   const thead = document.querySelector("#excludedTable thead");
   const tbody = document.querySelector("#excludedTable tbody");
@@ -877,6 +1032,7 @@ function toNumber(value) {
 function formatValue(value, type) {
   if (value === null || value === undefined || value === "") return "-";
   if (type === "currency") return formatCurrency(value);
+  if (type === "rate") return formatPercent(value);
   return formatNumber(value);
 }
 
@@ -921,6 +1077,7 @@ function renderEmptyStates(message) {
   document.getElementById("sessionsShareChart").innerHTML = message;
   document.getElementById("revenueShareChart").innerHTML = message;
   document.getElementById("trendGrid").innerHTML = `<div class="chart-card empty-chart">${escapeHtml(message)}</div>`;
+  document.getElementById("automationWeeklyDetail").innerHTML = `<div class="empty-state">${escapeHtml(message)}</div>`;
   document.querySelector("#excludedTable thead").innerHTML = "";
   document.querySelector("#excludedTable tbody").innerHTML = `<tr><td class="empty-cell">${escapeHtml(message)}</td></tr>`;
 }
