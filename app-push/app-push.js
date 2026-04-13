@@ -50,7 +50,15 @@ function bindEvents() {
   });
 
   document.getElementById("useLatestWeek")?.addEventListener("click", () => {
-    setLatestCompleteWeekRange();
+    syncDateInputsToState();
+    const start = parseInputDate(state.currentStart);
+    const end = parseInputDate(state.currentEnd);
+    if (!start || !end || start > end) return;
+    const days = Math.round((end - start) / (1000 * 60 * 60 * 24));
+    const compareEnd = addDays(start, -1);
+    const compareStart = addDays(compareEnd, -days);
+    state.compareStart = formatDateInput(compareStart);
+    state.compareEnd = formatDateInput(compareEnd);
     syncStateToDateInputs();
     applyFiltersAndRender();
   });
