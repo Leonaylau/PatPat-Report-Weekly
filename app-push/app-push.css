@@ -207,7 +207,7 @@ select {
 
 .overview-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -467,6 +467,52 @@ tbody tr:hover {
   background: #fdeeee;
   border-color: #f1cfcf;
 }
+
+.push-overview-grid {
+  margin-bottom: 1rem;
+}
+
+.automation-detail-block {
+  margin-bottom: 1.5rem;
+}
+
+.automation-detail-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: var(--ink);
+}
+
+.automation-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.automation-table th,
+.automation-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.automation-table th:first-child,
+.automation-table td:first-child {
+  text-align: left;
+}
+
+.automation-table th {
+  font-weight: 600;
+  font-size: 0.75rem;
+  color: var(--sub);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.automation-table .wow-good { color: var(--good); font-weight: 500; }
+.automation-table .wow-bad  { color: var(--bad); font-weight: 500; }
+.automation-table .wow-neutral { color: var(--sub); }
 
 .section-control-row {
   display: grid;

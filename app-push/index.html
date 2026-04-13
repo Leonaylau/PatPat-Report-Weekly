@@ -62,7 +62,7 @@
 
           <div class="filter-actions">
             <button id="applyDateRange" class="secondary-button" type="button">Apply Filters</button>
-            <button id="useLatestWeek" class="secondary-button" type="button">Latest Complete Week</button>
+            <button id="useLatestWeek" class="secondary-button" type="button">Auto Compare Period</button>
           </div>
 
           <p id="fileMeta" class="section-note">Loading app-push repository data...</p>
@@ -130,6 +130,8 @@
             </label>
           </div>
 
+          <div id="pushOverviewGrid" class="overview-grid push-overview-grid"></div>
+
           <div class="table-wrap">
             <table id="pushTable">
               <thead></thead>
@@ -184,6 +186,21 @@
         <div class="section-head">
           <div>
             <p class="section-kicker">Section 06</p>
+            <h2 class="section-title">Automation Push Weekly Detail</h2>
+            <p class="section-sub">Week-by-week breakdown for each automation push (Sunday to Saturday) with period-over-period change.</p>
+          </div>
+        </div>
+        <div class="section-body">
+          <div id="automationWeeklyDetail">
+            <div class="empty-state">Loading automation push weekly data...</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Section 07</p>
             <h2 class="section-title">Notes / Validation</h2>
             <p class="section-sub">Push name parsing rules and excluded rows.</p>
           </div>
