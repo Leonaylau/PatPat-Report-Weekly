@@ -1,5 +1,6 @@
 const state = {
   rawRows: [],
+  classifiedRows: [],
   filteredRows: [],
   excludedRows: [],
   currentStart: "",
@@ -7,16 +8,32 @@ const state = {
   compareStart: "",
   compareEnd: "",
   pushCategoryFilter: "all",
+  pushBucketFilter: "all",
   pushSearch: "",
   zeroRowFilter: "show",
 };
 
 const overviewMetrics = [
   { label: "Sessions", key: "sessions", type: "number", inverse: false },
-  { label: "Users", key: "users", type: "number", inverse: false },
+  { label: "Users / UV", key: "users", type: "number", inverse: false },
   { label: "Purchasers", key: "purchasers", type: "number", inverse: false },
   { label: "Revenue", key: "revenue", type: "currency", inverse: false },
 ];
+
+const pushCategoryLabelMap = {
+  all: "All",
+  manual: "Manual Push",
+  automation: "Automation Push",
+};
+
+const pushBucketLabelMap = {
+  all: "All Push Names",
+  current: "Current Push",
+  past: "Past Push",
+  automation: "Automation Push",
+  future: "Future Push",
+  invalid: "Invalid Manual Name",
+};
 
 document.addEventListener("DOMContentLoaded", async () => {
   bindEvents();
@@ -24,41 +41,36 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 function bindEvents() {
-  document.getElementById("applyDateRange").addEventListener("click", () => {
+  document.getElementById("applyDateRange")?.addEventListener("click", () => {
     syncDateInputsToState();
     applyFiltersAndRender();
   });
 
-  document.getElementById("usePreviousPeriod").addEventListener("click", () => {
-    syncDateInputsToState();
-    autoFillPreviousPeriod();
+  document.getElementById("useLatestWeek")?.addEventListener("click", () => {
+    setLatestCompleteWeekRange();
     syncStateToDateInputs();
     applyFiltersAndRender();
   });
 
-  const pushCategoryFilter = document.getElementById("pushCategoryFilter");
-  if (pushCategoryFilter) {
-    pushCategoryFilter.addEventListener("change", (e) => {
-      state.pushCategoryFilter = e.target.value;
-      applyFiltersAndRender();
-    });
-  }
+  document.getElementById("pushCategoryFilter")?.addEventListener("change", (e) => {
+    state.pushCategoryFilter = e.target.value;
+    applyFiltersAndRender();
+  });
 
-  const pushSearch = document.getElementById("pushSearch");
-  if (pushSearch) {
-    pushSearch.addEventListener("input", (e) => {
-      state.pushSearch = e.target.value.trim().toLowerCase();
-      applyFiltersAndRender();
-    });
-  }
+  document.getElementById("pushBucketFilter")?.addEventListener("change", (e) => {
+    state.pushBucketFilter = e.target.value;
+    applyFiltersAndRender();
+  });
 
-  const zeroRowFilter = document.getElementById("zeroRowFilter");
-  if (zeroRowFilter) {
-    zeroRowFilter.addEventListener("change", (e) => {
-      state.zeroRowFilter = e.target.value;
-      applyFiltersAndRender();
-    });
-  }
+  document.getElementById("pushSearch")?.addEventListener("input", (e) => {
+    state.pushSearch = e.target.value.trim().toLowerCase();
+    applyFiltersAndRender();
+  });
+
+  document.getElementById("zeroRowFilter")?.addEventListener("change", (e) => {
+    state.zeroRowFilter = e.target.value;
+    applyFiltersAndRender();
+  });
 }
 
 async function initializePushData() {
@@ -93,17 +105,7 @@ async function initializePushData() {
     state.rawRows = parsed.rows;
 
     if (state.rawRows.length) {
-      const dates = state.rawRows
-        .map((row) => row.dateObj)
-        .filter(Boolean)
-        .sort((a, b) => a - b);
-
-      const minDate = dates[0];
-      const maxDate = dates[dates.length - 1];
-
-      state.currentStart = formatDateInput(minDate);
-      state.currentEnd = formatDateInput(maxDate);
-      autoFillPreviousPeriod();
+      setLatestCompleteWeekRange();
       syncStateToDateInputs();
     }
 
@@ -148,59 +150,151 @@ function mapPushRow(raw) {
 }
 
 function syncDateInputsToState() {
-  state.currentStart = document.getElementById("currentStart").value;
-  state.currentEnd = document.getElementById("currentEnd").value;
-  state.compareStart = document.getElementById("compareStart").value;
-  state.compareEnd = document.getElementById("compareEnd").value;
+  state.currentStart = document.getElementById("currentStart")?.value || "";
+  state.currentEnd = document.getElementById("currentEnd")?.value || "";
+  state.compareStart = document.getElementById("compareStart")?.value || "";
+  state.compareEnd = document.getElementById("compareEnd")?.value || "";
 }
 
 function syncStateToDateInputs() {
-  document.getElementById("currentStart").value = state.currentStart || "";
-  document.getElementById("currentEnd").value = state.currentEnd || "";
-  document.getElementById("compareStart").value = state.compareStart || "";
-  document.getElementById("compareEnd").value = state.compareEnd || "";
+  const currentStart = document.getElementById("currentStart");
+  const currentEnd = document.getElementById("currentEnd");
+  const compareStart = document.getElementById("compareStart");
+  const compareEnd = document.getElementById("compareEnd");
+
+  if (currentStart) currentStart.value = state.currentStart || "";
+  if (currentEnd) currentEnd.value = state.currentEnd || "";
+  if (compareStart) compareStart.value = state.compareStart || "";
+  if (compareEnd) compareEnd.value = state.compareEnd || "";
 }
 
-function autoFillPreviousPeriod() {
-  const currentStart = parseInputDate(state.currentStart);
-  const currentEnd = parseInputDate(state.currentEnd);
-  if (!currentStart || !currentEnd) return;
+function setLatestCompleteWeekRange() {
+  const latestRange = getLatestCompletedWeekRange(state.rawRows);
+  if (!latestRange) return;
 
-  const days = Math.round((currentEnd - currentStart) / 86400000) + 1;
-  const compareEnd = new Date(currentStart);
-  compareEnd.setDate(compareEnd.getDate() - 1);
+  state.currentStart = formatDateInput(latestRange.currentStart);
+  state.currentEnd = formatDateInput(latestRange.currentEnd);
+  state.compareStart = formatDateInput(latestRange.compareStart);
+  state.compareEnd = formatDateInput(latestRange.compareEnd);
+}
 
-  const compareStart = new Date(compareEnd);
-  compareStart.setDate(compareStart.getDate() - (days - 1));
+function getLatestCompletedWeekRange(rows) {
+  const dates = (rows || [])
+    .map((row) => row.dateObj)
+    .filter(Boolean)
+    .sort((a, b) => a - b);
 
-  state.compareStart = formatDateInput(compareStart);
-  state.compareEnd = formatDateInput(compareEnd);
+  if (!dates.length) return null;
+
+  const latestDataDate = dates[dates.length - 1];
+  const currentEnd = getPreviousOrSameSaturday(latestDataDate);
+  const currentStart = addDays(currentEnd, -6);
+  const compareEnd = addDays(currentStart, -1);
+  const compareStart = addDays(compareEnd, -6);
+
+  return { currentStart, currentEnd, compareStart, compareEnd };
 }
 
 function applyFiltersAndRender() {
   const currentStart = parseInputDate(state.currentStart);
   const currentEnd = parseInputDate(state.currentEnd);
 
-  if (!currentStart || !currentEnd) {
+  if (!currentStart || !currentEnd || currentStart > currentEnd) {
     renderEmptyStates("Please select a valid current period.");
     return;
   }
 
-  const classified = state.rawRows.map((row) => {
-    const pushCategory = classifyPushCategory(row.pushName);
-    return { ...row, pushCategory };
-  });
-
-  state.excludedRows = [];
-
-  state.filteredRows = classified.filter((row) => isRowIncluded(row, currentStart, currentEnd));
+  state.classifiedRows = state.rawRows.map((row) => classifyRow(row, currentStart, currentEnd));
+  state.excludedRows = state.classifiedRows.filter((row) => row.pushBucket === "future" || row.pushBucket === "invalid");
+  state.filteredRows = state.classifiedRows.filter((row) => isRowIncluded(row, currentStart, currentEnd));
 
   renderAll();
 }
 
+function classifyRow(row, currentStart, currentEnd) {
+  const pushCategory = classifyPushCategory(row.pushName);
+  const resolvedManualDate = resolvePushNameDate(row.pushName, currentStart, currentEnd);
+  const pushBucket = classifyPushBucket(pushCategory, resolvedManualDate, currentStart, currentEnd);
+
+  return {
+    ...row,
+    pushCategory,
+    resolvedManualDate,
+    pushBucket,
+  };
+}
+
 function classifyPushCategory(pushName) {
   const name = String(pushName || "").trim().toLowerCase();
-  return name.startsWith("push") ? "manual" : "automation";
+  return /^(?:ppush|push)\b/.test(name) ? "manual" : "automation";
+}
+
+function resolvePushNameDate(pushName, currentStart, currentEnd) {
+  const name = String(pushName || "").trim().toLowerCase();
+  const match = name.match(/(?:^|\b)(?:ppush|push)\s*(\d{1,2})[.\/-](\d{1,2})(?:\b|$)/i);
+  if (!match) return null;
+
+  const month = Number(match[1]);
+  const day = Number(match[2]);
+  if (!month || !day || month > 12 || day > 31) return null;
+
+  const yearCandidates = new Set([
+    currentStart.getFullYear() - 1,
+    currentStart.getFullYear(),
+    currentEnd.getFullYear(),
+    currentEnd.getFullYear() + 1,
+  ]);
+
+  const candidates = [...yearCandidates]
+    .map((year) => buildSafeDate(year, month, day))
+    .filter(Boolean)
+    .sort((a, b) => a - b);
+
+  if (!candidates.length) return null;
+
+  const inRange = candidates.find((candidate) => candidate >= currentStart && candidate <= currentEnd);
+  if (inRange) return inRange;
+
+  const pastCandidates = candidates.filter((candidate) => candidate < currentStart);
+  if (pastCandidates.length) return pastCandidates[pastCandidates.length - 1];
+
+  return candidates[0];
+}
+
+function classifyPushBucket(pushCategory, resolvedManualDate, currentStart, currentEnd) {
+  if (pushCategory === "automation") return "automation";
+  if (!resolvedManualDate) return "invalid";
+  if (resolvedManualDate >= currentStart && resolvedManualDate <= currentEnd) return "current";
+  if (resolvedManualDate < currentStart) return "past";
+  return "future";
+}
+
+function isRowIncluded(row, startDate, endDate) {
+  const inDateRange = row.dateObj >= startDate && row.dateObj <= endDate;
+  if (!inDateRange) return false;
+  if (!matchesPushFilters(row)) return false;
+  if (row.pushBucket === "future" || row.pushBucket === "invalid") return false;
+  return true;
+}
+
+function matchesPushFilters(row) {
+  const categoryMatch =
+    state.pushCategoryFilter === "all" ||
+    (state.pushCategoryFilter === "manual" && row.pushCategory === "manual") ||
+    (state.pushCategoryFilter === "automation" && row.pushCategory === "automation");
+
+  const bucketMatch =
+    state.pushBucketFilter === "all" ||
+    (state.pushBucketFilter === "current" && row.pushBucket === "current") ||
+    (state.pushBucketFilter === "past" && row.pushBucket === "past") ||
+    (state.pushBucketFilter === "automation" && row.pushBucket === "automation") ||
+    (state.pushBucketFilter === "future" && row.pushBucket === "future") ||
+    (state.pushBucketFilter === "invalid" && row.pushBucket === "invalid");
+
+  const searchMatch = !state.pushSearch || row.pushName.toLowerCase().includes(state.pushSearch);
+  const zeroRowMatch = state.zeroRowFilter === "show" || (toNumber(row.purchasers) || 0) !== 0;
+
+  return categoryMatch && bucketMatch && searchMatch && zeroRowMatch;
 }
 
 function renderAll() {
@@ -213,14 +307,8 @@ function renderAll() {
 }
 
 function renderHeaderSummary() {
-  const labelMap = {
-    all: "All",
-    manual: "Manual Push",
-    automation: "Automation Push",
-  };
-
   document.getElementById("headerSummary").textContent =
-    `Current Period: ${state.currentStart || "--"} ~ ${state.currentEnd || "--"} ｜ Compare Period: ${state.compareStart || "--"} ~ ${state.compareEnd || "--"} ｜ Push Category: ${labelMap[state.pushCategoryFilter]}`;
+    `Current Period: ${state.currentStart || "--"} ~ ${state.currentEnd || "--"} ｜ Compare Period: ${state.compareStart || "--"} ~ ${state.compareEnd || "--"} ｜ Push Category: ${pushCategoryLabelMap[state.pushCategoryFilter]} ｜ Push Name Group: ${pushBucketLabelMap[state.pushBucketFilter]}`;
 }
 
 function renderOverview() {
@@ -267,30 +355,7 @@ function getCompareRows() {
   const compareEnd = parseInputDate(state.compareEnd);
   if (!compareStart || !compareEnd) return [];
 
-  return state.rawRows
-    .map((row) => {
-      const pushCategory = classifyPushCategory(row.pushName);
-      return { ...row, pushCategory };
-    })
-    .filter((row) => isRowIncluded(row, compareStart, compareEnd));
-}
-
-function isRowIncluded(row, startDate, endDate) {
-  const inDateRange = row.dateObj >= startDate && row.dateObj <= endDate;
-  if (!inDateRange) return false;
-
-  const categoryMatch =
-    state.pushCategoryFilter === "all" ||
-    (state.pushCategoryFilter === "manual" && row.pushCategory === "manual") ||
-    (state.pushCategoryFilter === "automation" && row.pushCategory === "automation");
-
-  const searchMatch =
-    !state.pushSearch || row.pushName.toLowerCase().includes(state.pushSearch);
-
-  const zeroRowMatch =
-    state.zeroRowFilter === "show" || (toNumber(row.purchasers) || 0) !== 0;
-
-  return categoryMatch && searchMatch && zeroRowMatch;
+  return state.classifiedRows.filter((row) => isRowIncluded(row, compareStart, compareEnd));
 }
 
 function aggregateRows(rows) {
@@ -312,7 +377,7 @@ function renderPushTable() {
   const context = document.getElementById("pushTableContext");
 
   context.textContent =
-    `Current: ${state.currentStart} ~ ${state.currentEnd} · Category: ${document.getElementById("pushCategoryFilter")?.selectedOptions?.[0]?.text || "All"}`;
+    `Current: ${state.currentStart} ~ ${state.currentEnd} · Push Category: ${pushCategoryLabelMap[state.pushCategoryFilter]} · Push Name Group: ${pushBucketLabelMap[state.pushBucketFilter]}`;
 
   const grouped = groupByPushName(state.filteredRows);
 
@@ -320,22 +385,26 @@ function renderPushTable() {
     <tr>
       <th>Push Name</th>
       <th>Push Category</th>
+      <th>Push Name Group</th>
+      <th>Resolved Push Date</th>
       <th>Sessions</th>
-      <th>Users</th>
+      <th>Users / UV</th>
       <th>Purchasers</th>
       <th>Revenue</th>
     </tr>
   `;
 
   if (!grouped.length) {
-    tbody.innerHTML = '<tr><td class="empty-cell" colspan="6">No push rows match the current filters.</td></tr>';
+    tbody.innerHTML = '<tr><td class="empty-cell" colspan="8">No push rows match the current filters.</td></tr>';
     return;
   }
 
   tbody.innerHTML = grouped.map((row) => `
     <tr>
       <td>${escapeHtml(row.pushName)}</td>
-      <td>${renderPushCategoryPill(row.pushCategory)}</td>
+      <td>${renderPill(row.pushCategory, "category")}</td>
+      <td>${renderPill(row.pushBucket, "bucket")}</td>
+      <td>${escapeHtml(row.resolvedManualDate ? formatDateInput(row.resolvedManualDate) : "-")}</td>
       <td>${escapeHtml(formatNumber(row.sessions))}</td>
       <td>${escapeHtml(formatNumber(row.users))}</td>
       <td>${escapeHtml(formatNumber(row.purchasers))}</td>
@@ -353,6 +422,8 @@ function groupByPushName(rows) {
       map.set(key, {
         pushName: row.pushName,
         pushCategory: row.pushCategory,
+        pushBucket: row.pushBucket,
+        resolvedManualDate: row.resolvedManualDate,
         sessions: 0,
         users: 0,
         purchasers: 0,
@@ -367,53 +438,50 @@ function groupByPushName(rows) {
     item.revenue += toNumber(row.revenue) || 0;
   });
 
-  return [...map.values()].sort((a, b) => b.sessions - a.sessions);
+  return [...map.values()].sort((a, b) => {
+    const revenueGap = (toNumber(b.revenue) || 0) - (toNumber(a.revenue) || 0);
+    if (revenueGap !== 0) return revenueGap;
+    return (toNumber(b.sessions) || 0) - (toNumber(a.sessions) || 0);
+  });
 }
 
-function renderPushCategoryPill(type) {
-  const labelMap = {
-    manual: "Manual Push",
-    automation: "Automation Push",
-  };
-
-  const classMap = {
-    manual: "push-type-pill push-current",
-    automation: "push-type-pill push-previous",
-  };
-
-  return `<span class="${classMap[type]}">${labelMap[type]}</span>`;
+function renderPill(value, type) {
+  const labelMap = type === "category" ? pushCategoryLabelMap : pushBucketLabelMap;
+  const className = `push-type-pill ${type === "category" ? `pill-category-${value}` : `pill-bucket-${value}`}`;
+  return `<span class="${className}">${escapeHtml(labelMap[value] || value)}</span>`;
 }
 
 function renderContributionCharts() {
-  const grouped = groupByPushCategory(state.filteredRows);
+  const grouped = groupByPushBucket(state.filteredRows);
 
   renderBarChart(
     document.getElementById("sessionsShareChart"),
-    buildShareDataFromCategory(grouped, "sessions")
+    buildShareData(grouped, "sessions")
   );
 
   renderBarChart(
     document.getElementById("revenueShareChart"),
-    buildShareDataFromCategory(grouped, "revenue")
+    buildShareData(grouped, "revenue")
   );
 }
 
-function groupByPushCategory(rows) {
+function groupByPushBucket(rows) {
   const base = {
-    manual: { label: "Manual Push", sessions: 0, revenue: 0 },
+    current: { label: "Current Push", sessions: 0, revenue: 0 },
+    past: { label: "Past Push", sessions: 0, revenue: 0 },
     automation: { label: "Automation Push", sessions: 0, revenue: 0 },
   };
 
   rows.forEach((row) => {
-    if (!base[row.pushCategory]) return;
-    base[row.pushCategory].sessions += toNumber(row.sessions) || 0;
-    base[row.pushCategory].revenue += toNumber(row.revenue) || 0;
+    if (!base[row.pushBucket]) return;
+    base[row.pushBucket].sessions += toNumber(row.sessions) || 0;
+    base[row.pushBucket].revenue += toNumber(row.revenue) || 0;
   });
 
-  return Object.values(base);
+  return Object.values(base).filter((row) => row.sessions !== 0 || row.revenue !== 0);
 }
 
-function buildShareDataFromCategory(rows, key) {
+function buildShareData(rows, key) {
   const total = rows.reduce((sum, row) => sum + (toNumber(row[key]) || 0), 0);
   return rows.map((row) => ({
     label: row.label,
@@ -440,50 +508,86 @@ function renderBarChart(container, data) {
 
 function renderTrendCharts() {
   const container = document.getElementById("trendGrid");
-  const currentStart = parseInputDate(state.currentStart);
-  const currentEnd = parseInputDate(state.currentEnd);
+  const filteredAllTimeRows = getAllTimeRowsForTrend();
+  const weeklySeries = buildWeeklySeries(filteredAllTimeRows);
 
-  if (!currentStart || !currentEnd) {
-    container.innerHTML = '<div class="chart-card empty-chart">Please select a valid current period.</div>';
+  if (!weeklySeries.length) {
+    container.innerHTML = '<div class="chart-card empty-chart">No weekly trend data available for the current filters.</div>';
     return;
   }
 
-  const daily = buildDailySeries(currentStart, currentEnd, state.filteredRows);
+  const metrics = [
+    { label: "Weekly Purchasers", key: "purchasers", type: "number" },
+    { label: "Weekly Revenue", key: "revenue", type: "currency" },
+    { label: "Weekly Sessions", key: "sessions", type: "number" },
+    { label: "Weekly UV", key: "users", type: "number" },
+  ];
 
-  container.innerHTML = [
-    { label: "Sessions Trend", key: "sessions", type: "number" },
-    { label: "Revenue Trend", key: "revenue", type: "currency" },
-  ].map((metric) => `
+  container.innerHTML = metrics.map((metric) => `
     <div class="chart-card">
       <h3>${escapeHtml(metric.label)}</h3>
-      <div class="line-chart">${renderLineSvg(daily, metric)}</div>
+      <p class="chart-caption">Grouped by Sunday to Saturday across all available weeks.</p>
+      <div class="line-chart">${renderLineSvg(weeklySeries, metric)}</div>
     </div>
   `).join("");
 }
 
-function buildDailySeries(start, end, rows) {
-  const dayMap = new Map();
-  const cursor = new Date(start);
+function getAllTimeRowsForTrend() {
+  return state.classifiedRows.filter((row) => {
+    if (row.pushBucket === "future" || row.pushBucket === "invalid") return false;
+    return matchesPushFilters(row);
+  });
+}
 
-  while (cursor <= end) {
-    const key = formatDateInput(cursor);
-    dayMap.set(key, { label: key, sessions: 0, revenue: 0 });
-    cursor.setDate(cursor.getDate() + 1);
+function buildWeeklySeries(rows) {
+  if (!rows.length) return [];
+
+  const sortedDates = rows
+    .map((row) => row.dateObj)
+    .filter(Boolean)
+    .sort((a, b) => a - b);
+
+  const firstWeekStart = getSunday(sortedDates[0]);
+  const lastWeekEnd = getSaturday(sortedDates[sortedDates.length - 1]);
+  const weekMap = new Map();
+
+  const cursor = new Date(firstWeekStart);
+  while (cursor <= lastWeekEnd) {
+    const weekStart = new Date(cursor);
+    const weekEnd = addDays(weekStart, 6);
+    const key = formatDateInput(weekStart);
+    weekMap.set(key, {
+      label: `${formatMonthDay(weekStart)}-${formatMonthDay(weekEnd)}`,
+      weekStart,
+      weekEnd,
+      sessions: 0,
+      users: 0,
+      purchasers: 0,
+      revenue: 0,
+    });
+    cursor.setDate(cursor.getDate() + 7);
   }
 
   rows.forEach((row) => {
-    const key = formatDateInput(row.dateObj);
-    if (!dayMap.has(key)) return;
-    const item = dayMap.get(key);
+    const weekStart = getSunday(row.dateObj);
+    const key = formatDateInput(weekStart);
+    if (!weekMap.has(key)) return;
+    const item = weekMap.get(key);
     item.sessions += toNumber(row.sessions) || 0;
+    item.users += toNumber(row.users) || 0;
+    item.purchasers += toNumber(row.purchasers) || 0;
     item.revenue += toNumber(row.revenue) || 0;
   });
 
-  return [...dayMap.values()];
+  return [...weekMap.values()];
 }
 
 function renderLineSvg(series, metric) {
-  const points = series.map((item) => ({ label: item.label, value: item[metric.key] }));
+  const points = series.map((item) => ({
+    label: item.label,
+    value: item[metric.key],
+  }));
+
   if (!points.length) return '<div class="empty-chart">No data available.</div>';
 
   const width = 620;
@@ -492,6 +596,7 @@ function renderLineSvg(series, metric) {
   const innerWidth = width - padding.left - padding.right;
   const innerHeight = height - padding.top - padding.bottom;
   const maxValue = Math.max(...points.map((point) => toNumber(point.value) || 0), 0.01);
+  const tickIndexes = buildTickIndexes(points.length, 8);
 
   const scaleX = (index) =>
     padding.left + (points.length === 1 ? innerWidth / 2 : (index / (points.length - 1)) * innerWidth);
@@ -510,28 +615,37 @@ function renderLineSvg(series, metric) {
   const dots = points.map((point, index) => {
     const x = scaleX(index);
     const y = scaleY(point.value);
-    return `
-      <g>
-        <circle class="line-dot" cx="${x}" cy="${y}" r="4"></circle>
-        <text class="line-value" x="${x}" y="${y - 10}" text-anchor="middle">${escapeHtml(formatValue(point.value, metric.type))}</text>
-      </g>
-    `;
+    return `<circle class="line-dot" cx="${x}" cy="${y}" r="3.5"></circle>`;
   }).join("");
 
-  const xTicks = points.map((point, index) =>
-    `<text class="tick-label" x="${scaleX(index)}" y="${height - 18}" text-anchor="middle">${escapeHtml(shortDate(point.label))}</text>`
+  const xTicks = tickIndexes.map((index) =>
+    `<text class="tick-label" x="${scaleX(index)}" y="${height - 18}" text-anchor="middle">${escapeHtml(points[index].label)}</text>`
   ).join("");
 
+  const yTopLabel = `<text class="tick-label" x="${padding.left}" y="${padding.top - 4}" text-anchor="start">${escapeHtml(formatValue(maxValue, metric.type))}</text>`;
+
   return `
-    <svg class="line-svg" viewBox="0 0 ${width} ${height}" role="img">
+    <svg class="line-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(metric.label)}">
       ${gridLines}
       <line class="grid-line" x1="${padding.left}" y1="${padding.top + innerHeight}" x2="${padding.left + innerWidth}" y2="${padding.top + innerHeight}"></line>
       <line class="grid-line" x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${padding.top + innerHeight}"></line>
+      ${yTopLabel}
       <path class="line-path" d="${path}"></path>
       ${dots}
       ${xTicks}
     </svg>
   `;
+}
+
+function buildTickIndexes(length, maxTicks) {
+  if (length <= maxTicks) return [...Array(length).keys()];
+  const step = Math.ceil(length / maxTicks);
+  const indexes = [];
+  for (let index = 0; index < length; index += step) {
+    indexes.push(index);
+  }
+  if (indexes[indexes.length - 1] !== length - 1) indexes.push(length - 1);
+  return indexes;
 }
 
 function renderExcludedTable() {
@@ -540,14 +654,17 @@ function renderExcludedTable() {
 
   thead.innerHTML = `
     <tr>
-      <th>日期</th>
+      <th>Date</th>
       <th>Push Name</th>
+      <th>Push Category</th>
+      <th>Push Name Group</th>
+      <th>Resolved Push Date</th>
       <th>Reason</th>
     </tr>
   `;
 
   if (!state.excludedRows.length) {
-    tbody.innerHTML = '<tr><td class="empty-cell" colspan="3">No excluded push rows in the current dataset.</td></tr>';
+    tbody.innerHTML = '<tr><td class="empty-cell" colspan="6">No future / invalid manual push names in the current dataset.</td></tr>';
     return;
   }
 
@@ -555,7 +672,10 @@ function renderExcludedTable() {
     <tr>
       <td>${escapeHtml(row.date)}</td>
       <td>${escapeHtml(row.pushName)}</td>
-      <td>Excluded by classification rule</td>
+      <td>${renderPill(row.pushCategory, "category")}</td>
+      <td>${renderPill(row.pushBucket, "bucket")}</td>
+      <td>${escapeHtml(row.resolvedManualDate ? formatDateInput(row.resolvedManualDate) : "-")}</td>
+      <td>${escapeHtml(row.pushBucket === "future" ? "Manual push name date is later than the selected current period." : "Manual push name could not be parsed into a valid month.day date.")}</td>
     </tr>
   `).join("");
 }
@@ -566,7 +686,7 @@ function buildWowObject(currentValue, priorValue, type, inverse) {
 
   if (prior === 0) {
     return {
-      pctOnlyLabel: "—",
+      pctOnlyLabel: current === 0 ? "0.00%" : "—",
       className: "wow-neutral",
       arrow: "→",
     };
@@ -574,7 +694,6 @@ function buildWowObject(currentValue, priorValue, type, inverse) {
 
   const abs = current - prior;
   const pct = abs / prior;
-
   const good = inverse ? abs < 0 : abs > 0;
   const bad = inverse ? abs > 0 : abs < 0;
 
@@ -644,7 +763,7 @@ function parseFlexibleDate(value) {
   }
 
   const tryDate = new Date(raw);
-  if (!isNaN(tryDate.getTime())) {
+  if (!Number.isNaN(tryDate.getTime())) {
     return new Date(tryDate.getFullYear(), tryDate.getMonth(), tryDate.getDate());
   }
 
@@ -662,8 +781,42 @@ function parseFlexibleDate(value) {
 function parseInputDate(value) {
   if (!value) return null;
   const date = new Date(value);
-  if (isNaN(date.getTime())) return null;
+  if (Number.isNaN(date.getTime())) return null;
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function buildSafeDate(year, month, day) {
+  const date = new Date(year, month - 1, day);
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+  return date;
+}
+
+function addDays(date, amount) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + amount);
+  return new Date(next.getFullYear(), next.getMonth(), next.getDate());
+}
+
+function getSunday(date) {
+  const copy = new Date(date);
+  copy.setDate(copy.getDate() - copy.getDay());
+  return new Date(copy.getFullYear(), copy.getMonth(), copy.getDate());
+}
+
+function getSaturday(date) {
+  return addDays(getSunday(date), 6);
+}
+
+function getPreviousOrSameSaturday(date) {
+  const day = date.getDay();
+  const distance = (day + 1) % 7;
+  return addDays(date, -distance);
 }
 
 function formatDateInput(date) {
@@ -674,9 +827,9 @@ function formatDateInput(date) {
   return `${y}-${m}-${d}`;
 }
 
-function shortDate(value) {
-  if (!value) return "";
-  return value.slice(5);
+function formatMonthDay(date) {
+  if (!date) return "";
+  return `${date.getMonth() + 1}.${date.getDate()}`;
 }
 
 function normalizeText(value) {
@@ -742,6 +895,8 @@ function renderEmptyStates(message) {
   document.getElementById("sessionsShareChart").innerHTML = message;
   document.getElementById("revenueShareChart").innerHTML = message;
   document.getElementById("trendGrid").innerHTML = `<div class="chart-card empty-chart">${escapeHtml(message)}</div>`;
+  document.querySelector("#excludedTable thead").innerHTML = "";
+  document.querySelector("#excludedTable tbody").innerHTML = `<tr><td class="empty-cell">${escapeHtml(message)}</td></tr>`;
 }
 
 function escapeHtml(value) {
@@ -749,6 +904,6 @@ function escapeHtml(value) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
+    .replace(/\"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
