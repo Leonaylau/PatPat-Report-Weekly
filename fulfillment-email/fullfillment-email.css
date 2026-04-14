@@ -2,45 +2,44 @@
   position: sticky;
   top: 0;
   z-index: 100;
-  background: rgba(0, 0, 0, 0.8);
-  backdrop-filter: saturate(180%) blur(20px);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  background: #faf9f5;
+  border-bottom: 1px solid #f0eee6;
   padding: 0 1.5rem;
   display: flex;
   align-items: center;
   gap: 0.75rem;
   height: 48px;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .nav-link {
-  color: rgba(255, 255, 255, 0.8);
+  color: #5e5d59;
   text-decoration: none;
   font-weight: 400;
 }
 
-.nav-link:hover { color: #fff; }
+.nav-link:hover { color: #141413; }
 
-.nav-separator { color: rgba(255, 255, 255, 0.32); }
+.nav-separator { color: #b0aea5; }
 
 .nav-current {
-  color: #fff;
-  font-weight: 600;
+  color: #141413;
+  font-weight: 500;
 }
 
 :root {
-  --bg: #f5f5f7;
-  --card: #ffffff;
-  --line: rgba(0, 0, 0, 0.06);
-  --ink: #1d1d1f;
-  --sub: rgba(0, 0, 0, 0.48);
-  --accent: #0071e3;
-  --accent-soft: rgba(0, 113, 227, 0.08);
+  --bg: #f5f4ed;
+  --card: #faf9f5;
+  --line: #f0eee6;
+  --ink: #141413;
+  --sub: #5e5d59;
+  --accent: #c96442;
+  --accent-soft: rgba(201, 100, 66, 0.08);
   --good: #248a3d;
-  --bad: #d70015;
+  --bad: #b53333;
   --warn: #b25000;
-  --muted: rgba(0, 0, 0, 0.32);
-  --shadow: none;
+  --muted: #87867f;
+  --shadow: rgba(0, 0, 0, 0.05) 0px 4px 24px;
 }
 
 * {
@@ -50,7 +49,7 @@
 body {
   margin: 0;
   color: var(--ink);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   background: var(--bg);
   font-variant-numeric: tabular-nums lining-nums;
   -webkit-font-smoothing: antialiased;
@@ -64,39 +63,38 @@ select {
 }
 
 .page-shell {
-  max-width: 980px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 32px 24px 56px;
 }
 
 .dashboard-header {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
 .eyebrow,
 .section-kicker {
   margin: 0 0 8px;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.12px;
   font-size: 12px;
-  font-weight: 600;
-  color: var(--sub);
+  font-weight: 500;
+  color: var(--muted);
 }
 
 .page-title {
   margin: 0;
+  font-family: Georgia, "Anthropic Serif", "Times New Roman", serif;
   font-size: 40px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.10;
-  letter-spacing: -0.28px;
 }
 
 .page-summary {
   margin: 8px 0 0;
   color: var(--sub);
-  font-size: 14px;
-  line-height: 1.43;
-  letter-spacing: -0.224px;
+  font-size: 16px;
+  line-height: 1.60;
 }
 
 .dashboard {
@@ -106,9 +104,10 @@ select {
 
 .section {
   background: var(--card);
-  border: none;
+  border: 1px solid var(--line);
   border-radius: 12px;
-  padding: 20px;
+  padding: 24px;
+  box-shadow: var(--shadow);
 }
 
 .section-head {
@@ -121,18 +120,17 @@ select {
 
 .section-title {
   margin: 0;
-  font-size: 21px;
-  font-weight: 600;
-  line-height: 1.19;
-  letter-spacing: 0.231px;
+  font-family: Georgia, "Anthropic Serif", "Times New Roman", serif;
+  font-size: 25px;
+  font-weight: 500;
+  line-height: 1.20;
 }
 
 .section-sub {
   margin: 4px 0 0;
   color: var(--sub);
-  font-size: 14px;
-  line-height: 1.43;
-  letter-spacing: -0.224px;
+  font-size: 15px;
+  line-height: 1.60;
 }
 
 .section-body {
@@ -161,9 +159,9 @@ select {
 
 .control span {
   font-size: 12px;
-  color: var(--sub);
-  font-weight: 600;
-  letter-spacing: -0.12px;
+  color: var(--muted);
+  font-weight: 500;
+  letter-spacing: 0.12px;
 }
 
 .control input,
@@ -173,17 +171,16 @@ select {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0 12px;
-  background: var(--card);
+  background: #fff;
   color: var(--ink);
   outline: none;
-  font-size: 14px;
-  letter-spacing: -0.224px;
+  font-size: 15px;
 }
 
 .control input:focus,
 .control select:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.2);
+  border-color: #3898ec;
+  box-shadow: 0 0 0 2px rgba(56, 152, 236, 0.2);
 }
 
 .filter-actions {
@@ -202,37 +199,37 @@ select {
   border-radius: 8px;
   border: none;
   cursor: pointer;
-  font-weight: 400;
-  font-size: 14px;
-  letter-spacing: -0.224px;
+  font-weight: 500;
+  font-size: 15px;
   white-space: nowrap;
   transition: opacity 0.15s;
 }
 
 .secondary-button {
   background: var(--accent);
-  color: #fff;
+  color: #faf9f5;
+  box-shadow: #c96442 0px 0px 0px 0px, #c96442 0px 0px 0px 1px;
 }
 
 .secondary-button:hover {
-  opacity: 0.85;
+  opacity: 0.9;
 }
 
 .danger-button {
-  background: rgba(215, 0, 21, 0.1);
+  background: rgba(181, 51, 51, 0.08);
   color: var(--bad);
+  box-shadow: #b53333 0px 0px 0px 0px, rgba(181, 51, 51, 0.3) 0px 0px 0px 1px;
 }
 
 .danger-button:hover {
-  opacity: 0.75;
+  opacity: 0.8;
 }
 
 .section-note {
   margin: 0;
-  font-size: 12px;
-  color: var(--sub);
-  line-height: 1.33;
-  letter-spacing: -0.12px;
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.43;
 }
 
 .overview-grid {
@@ -242,9 +239,9 @@ select {
 }
 
 .metric-card {
-  border: none;
-  background: var(--bg);
-  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 8px;
   padding: 14px;
   min-height: 96px;
   display: flex;
@@ -255,17 +252,17 @@ select {
 .metric-label {
   margin: 0;
   font-size: 12px;
-  color: var(--sub);
-  line-height: 1.33;
-  letter-spacing: -0.12px;
+  color: var(--muted);
+  line-height: 1.25;
+  letter-spacing: 0.12px;
 }
 
 .metric-value {
   margin: 8px 0 6px;
+  font-family: Georgia, "Anthropic Serif", "Times New Roman", serif;
   font-size: 28px;
-  font-weight: 600;
-  line-height: 1.14;
-  letter-spacing: -0.28px;
+  font-weight: 500;
+  line-height: 1.10;
 }
 
 .metric-wow {
@@ -273,9 +270,8 @@ select {
   align-items: center;
   gap: 4px;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1;
-  letter-spacing: -0.224px;
 }
 
 .metric-wow-arrow {
@@ -288,9 +284,9 @@ select {
 .wow-neutral { color: var(--muted); }
 
 .column-panel {
-  border: none;
-  border-radius: 12px;
-  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
   padding: 16px;
 }
 
@@ -300,16 +296,15 @@ select {
 
 .column-panel-head h3 {
   margin: 0 0 4px;
+  font-family: Georgia, "Anthropic Serif", "Times New Roman", serif;
   font-size: 17px;
-  font-weight: 600;
-  letter-spacing: -0.374px;
+  font-weight: 500;
 }
 
 .column-panel-head p {
   margin: 0 0 10px;
-  font-size: 14px;
+  font-size: 15px;
   color: var(--sub);
-  letter-spacing: -0.224px;
 }
 
 .column-list {
@@ -336,17 +331,16 @@ select {
 
 .table-wrap {
   overflow: auto;
-  border: none;
-  border-radius: 12px;
-  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
   min-width: 1200px;
-  font-size: 13px;
-  letter-spacing: -0.12px;
+  font-size: 14px;
 }
 
 th,
@@ -358,17 +352,17 @@ td {
 }
 
 th {
-  background: transparent;
+  background: var(--card);
   text-align: left;
-  font-weight: 600;
+  font-weight: 500;
   font-size: 12px;
-  color: var(--sub);
-  letter-spacing: -0.12px;
+  color: var(--muted);
+  letter-spacing: 0.12px;
 }
 
 th button {
   font: inherit;
-  font-weight: 600;
+  font-weight: 500;
   color: inherit;
   border: none;
   background: none;
@@ -377,11 +371,11 @@ th button {
 }
 
 tbody tr:hover {
-  background: rgba(0, 113, 227, 0.04);
+  background: rgba(201, 100, 66, 0.04);
 }
 
 .flow-name {
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .empty-cell,
@@ -390,18 +384,16 @@ tbody tr:hover {
   display: grid;
   place-items: center;
   min-height: 110px;
-  color: var(--sub);
-  font-size: 14px;
-  letter-spacing: -0.224px;
+  color: var(--muted);
+  font-size: 15px;
 }
 
 .wow-rate-only {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-weight: 600;
-  font-size: 13px;
-  letter-spacing: -0.12px;
+  font-weight: 500;
+  font-size: 14px;
 }
 
 .wow-rate-arrow {
@@ -424,25 +416,24 @@ tbody tr:hover {
 }
 
 .chart-card {
-  border: none;
-  border-radius: 12px;
-  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
   padding: 16px;
 }
 
 .chart-card h3 {
   margin: 0;
+  font-family: Georgia, "Anthropic Serif", "Times New Roman", serif;
   font-size: 17px;
-  font-weight: 600;
-  letter-spacing: -0.374px;
+  font-weight: 500;
 }
 
 .chart-caption,
 .legend-note {
   margin: 4px 0 0;
-  font-size: 12px;
-  color: var(--sub);
-  letter-spacing: -0.12px;
+  font-size: 14px;
+  color: var(--muted);
 }
 
 .bar-chart,
@@ -460,18 +451,17 @@ tbody tr:hover {
 }
 
 .bar-label {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
-  letter-spacing: -0.12px;
 }
 
 .bar-track {
   width: 100%;
-  height: 6px;
+  height: 8px;
   border-radius: 999px;
-  background: rgba(0, 0, 0, 0.06);
+  background: #e8e6dc;
   overflow: hidden;
 }
 
@@ -482,9 +472,8 @@ tbody tr:hover {
 }
 
 .bar-value {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: -0.12px;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .scatter-svg,
@@ -496,18 +485,18 @@ tbody tr:hover {
 
 .axis-label,
 .tick-label {
-  font-size: 11px;
-  fill: rgba(0, 0, 0, 0.48);
+  font-size: 12px;
+  fill: #87867f;
 }
 
 .grid-line {
-  stroke: rgba(0, 0, 0, 0.06);
+  stroke: #e8e6dc;
   stroke-width: 1;
 }
 
 .bubble {
-  fill: rgba(0, 113, 227, 0.15);
-  stroke: rgba(0, 113, 227, 0.6);
+  fill: rgba(201, 100, 66, 0.15);
+  stroke: rgba(201, 100, 66, 0.6);
   stroke-width: 1.5;
 }
 
@@ -532,9 +521,9 @@ tbody tr:hover {
 }
 
 .note-box {
-  border: none;
-  border-radius: 12px;
-  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
   padding: 14px 16px;
 }
 
@@ -545,10 +534,9 @@ tbody tr:hover {
 
 .note-box li {
   margin: 4px 0;
-  font-size: 14px;
-  line-height: 1.43;
-  letter-spacing: -0.224px;
-  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.60;
+  color: var(--sub);
 }
 
 @media (max-width: 1200px) {
@@ -572,8 +560,7 @@ tbody tr:hover {
   }
 
   .page-title {
-    font-size: 28px;
-    letter-spacing: 0.196px;
+    font-size: 32px;
   }
 
   .filter-grid,
@@ -586,7 +573,7 @@ tbody tr:hover {
 
   .section {
     padding: 16px;
-    border-radius: 12px;
+    border-radius: 8px;
   }
 
   .metric-value {

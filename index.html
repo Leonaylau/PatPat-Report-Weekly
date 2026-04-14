@@ -8,15 +8,14 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
-      background: #f5f5f7;
-      color: #1d1d1f;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: #f5f4ed;
+      color: #141413;
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
       -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
     }
 
     .landing {
@@ -32,26 +31,25 @@
 
     .landing-eyebrow {
       font-size: 12px;
-      font-weight: 600;
+      font-weight: 500;
       text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: #0071e3;
+      letter-spacing: 0.12px;
+      color: #c96442;
       margin-bottom: 0.75rem;
     }
 
     .landing-title {
+      font-family: Georgia, "Times New Roman", serif;
       font-size: 40px;
-      font-weight: 600;
+      font-weight: 500;
       line-height: 1.10;
-      letter-spacing: -0.28px;
     }
 
     .landing-sub {
-      font-size: 17px;
-      color: rgba(0, 0, 0, 0.48);
-      margin-top: 0.5rem;
-      line-height: 1.47;
-      letter-spacing: -0.374px;
+      font-size: 16px;
+      color: #5e5d59;
+      margin-top: 0.75rem;
+      line-height: 1.60;
     }
 
     .card-grid {
@@ -64,16 +62,17 @@
       display: block;
       text-decoration: none;
       color: inherit;
-      background: #ffffff;
-      border: none;
+      background: #faf9f5;
+      border: 1px solid #f0eee6;
       border-radius: 12px;
       padding: 2rem 1.5rem;
+      box-shadow: rgba(0, 0, 0, 0.05) 0px 4px 24px;
       transition: transform 0.2s, box-shadow 0.2s;
     }
 
     .card-link:hover {
       transform: translateY(-2px);
-      box-shadow: rgba(0, 0, 0, 0.22) 3px 5px 30px 0px;
+      box-shadow: rgba(0, 0, 0, 0.1) 0px 8px 32px;
     }
 
     .card-icon {
@@ -82,23 +81,22 @@
     }
 
     .card-title {
-      font-size: 21px;
-      font-weight: 600;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 25px;
+      font-weight: 500;
       margin-bottom: 0.5rem;
-      line-height: 1.19;
-      letter-spacing: 0.231px;
+      line-height: 1.20;
     }
 
     .card-desc {
-      font-size: 14px;
-      color: rgba(0, 0, 0, 0.48);
-      line-height: 1.43;
-      letter-spacing: -0.224px;
+      font-size: 15px;
+      color: #5e5d59;
+      line-height: 1.60;
     }
 
     @media (max-width: 520px) {
       .card-grid { grid-template-columns: 1fr; }
-      .landing-title { font-size: 28px; }
+      .landing-title { font-size: 32px; }
     }
   </style>
 </head>
