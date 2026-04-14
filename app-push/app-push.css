@@ -488,6 +488,14 @@ tbody tr:hover {
   margin-bottom: 1rem;
 }
 
+.dow-grid {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.dow-best {
+  border: 2px solid var(--accent);
+}
+
 .automation-detail-block {
   margin-bottom: 1.5rem;
 }
@@ -531,6 +539,14 @@ tbody tr:hover {
 .automation-table .wow-bad  { color: var(--bad); font-weight: 500; }
 .automation-table .wow-neutral { color: var(--muted); }
 
+.automation-table .week-best td { background: rgba(36, 138, 61, 0.06); }
+.automation-table .week-worst td { background: rgba(181, 51, 51, 0.06); }
+
+.automation-table .summary-row td {
+  font-weight: 600;
+  border-top: 2px solid var(--line);
+}
+
 .section-control-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(180px, 1fr));
@@ -543,6 +559,7 @@ tbody tr:hover {
   .date-filter-grid,
   .section-control-row,
   .overview-grid,
+  .dow-grid,
   .two-up,
   .trends-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -611,6 +628,7 @@ tbody tr:hover {
   .date-filter-grid,
   .section-control-row,
   .overview-grid,
+  .dow-grid,
   .two-up,
   .trends-grid {
     grid-template-columns: 1fr;

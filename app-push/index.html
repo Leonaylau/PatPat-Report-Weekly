@@ -20,14 +20,16 @@
     <a href="#sec-03">Performance</a>
     <a href="#sec-04">Contribution</a>
     <a href="#sec-05">Trends</a>
-    <a href="#sec-06">Automation</a>
-    <a href="#sec-07">Notes</a>
+    <a href="#sec-06">Day-of-Week</a>
+    <a href="#sec-07">Automation</a>
+    <a href="#sec-08">Notes</a>
   </nav>
   <div class="page-shell">
     <header class="dashboard-header">
       <div class="header-main">
         <p class="eyebrow">APP Push Dashboard</p>
         <h1 class="page-title">Campaign Performance Report</h1>
+        <p id="dataFreshness" class="page-summary"></p>
         <p id="headerSummary" class="page-summary">
           Current Period: -- ｜ Compare Period: -- ｜ Push Filter: All Push
         </p>
@@ -138,6 +140,11 @@
 
           <div id="pushOverviewGrid" class="overview-grid push-overview-grid"></div>
 
+          <div class="chart-card" id="pushRankingCard">
+            <h3>Top 10 Push by Revenue</h3>
+            <div id="pushRankingChart" class="bar-chart empty-chart"></div>
+          </div>
+
           <div class="table-wrap">
             <table id="pushTable">
               <thead></thead>
@@ -192,6 +199,21 @@
         <div class="section-head">
           <div>
             <p class="section-kicker">Section 06</p>
+            <h2 class="section-title">Day-of-Week Performance</h2>
+            <p class="section-sub">Aggregated metrics by day of week to optimize push timing (based on current period and filters).</p>
+          </div>
+        </div>
+        <div class="section-body">
+          <div id="dayOfWeekGrid" class="overview-grid dow-grid">
+            <div class="empty-state">Loading day-of-week data...</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="sec-07" class="section">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Section 07</p>
             <h2 class="section-title">Automation Push Weekly Detail</h2>
             <p class="section-sub">Week-by-week breakdown for each automation push (Sunday to Saturday) with period-over-period change.</p>
           </div>
@@ -203,10 +225,10 @@
         </div>
       </section>
 
-      <section id="sec-07" class="section">
+      <section id="sec-08" class="section">
         <div class="section-head">
           <div>
-            <p class="section-kicker">Section 07</p>
+            <p class="section-kicker">Section 08</p>
             <h2 class="section-title">Notes / Validation</h2>
             <p class="section-sub">Push name parsing rules and excluded rows.</p>
           </div>

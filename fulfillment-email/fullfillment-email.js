@@ -116,6 +116,9 @@ async function initializeRepositoryData() {
     state.selectedWeek = state.store.weekOrder[state.store.weekOrder.length - 1] || "";
     autoSelectCompareWeek();
     state.statusMessage = `Loaded ${state.store.weekOrder.length} week(s) from ${MANIFEST_PATH}.`;
+    if (state.selectedWeek) {
+      document.getElementById("dataFreshness").textContent = `数据截至: ${state.selectedWeek}`;
+    }
     hydrateCurrentWeek();
   } catch (error) {
     state.statusMessage = `Failed to load repository data: ${error.message}`;
@@ -488,15 +491,43 @@ function renderTrendCharts() {
     return;
   }
 
+  const overlayColors = ["#c96442", "#248a3d", "#87867f"];
+
   container.innerHTML = trendMetrics
-    .map(
-      (metric) => `
+    .map((metric) => {
+      const flowNames = new Set();
+      weekSeries.forEach((w) => {
+        const weekObj = state.store.weeks[w.label];
+        if (weekObj?.rows) weekObj.rows.forEach((r) => flowNames.add(r.flow));
+      });
+
+      const flowTotals = [...flowNames].map((flow) => {
+        const total = weekSeries.reduce((sum, w) => {
+          const weekObj = state.store.weeks[w.label];
+          const row = weekObj?.rows?.find((r) => r.flow === flow);
+          return sum + (row ? toNumber(row[metric.key]) || 0 : 0);
+        }, 0);
+        return { flow, total };
+      }).sort((a, b) => b.total - a.total);
+
+      const topFlows = flowTotals.slice(0, 3);
+      const overlays = topFlows.map((tf, i) => ({
+        label: tf.flow,
+        color: overlayColors[i % overlayColors.length],
+        points: weekSeries.map((w) => {
+          const weekObj = state.store.weeks[w.label];
+          const row = weekObj?.rows?.find((r) => r.flow === tf.flow);
+          return { label: w.label, value: row ? toNumber(row[metric.key]) || 0 : 0 };
+        }),
+      }));
+
+      return `
       <div class="chart-card">
         <h3>${escapeHtml(metric.label)}</h3>
-        <div class="line-chart">${renderLineSvg(weekSeries, metric)}</div>
+        <div class="line-chart">${renderLineSvg(weekSeries, metric, overlays)}</div>
       </div>
-    `
-    )
+    `;
+    })
     .join("");
 }
 
@@ -626,7 +657,7 @@ function renderScatterChart({ element, rows, xKey, yKey, sizeKey, xLabel, yLabel
   `;
 }
 
-function renderLineSvg(series, metric) {
+function renderLineSvg(series, metric, overlays) {
   const points = series
     .map((item) => ({ label: item.label, value: item.summary[metric.key] }))
     .filter((item) => item.value !== null && item.value !== undefined);
@@ -689,6 +720,17 @@ function renderLineSvg(series, metric) {
     })
     .join("");
 
+  const overlayPaths = (overlays || []).map((ov) => {
+    const ovPath = ov.points
+      .map((p, i) => `${i === 0 ? "M" : "L"}${scaleX(i)} ${scaleY(p.value)}`)
+      .join(" ");
+    return `<path class="line-path-overlay" d="${ovPath}" style="stroke:${ov.color};stroke-width:1.5;fill:none;opacity:0.7"></path>`;
+  }).join("");
+
+  const overlayLegend = (overlays || []).length ? `<div class="chart-legend">${(overlays || []).map((ov) =>
+    `<span class="legend-item"><span class="legend-swatch" style="background:${ov.color}"></span>${escapeHtml(ov.label)}</span>`
+  ).join("")}</div>` : "";
+
   return `
     <svg class="line-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeAttribute(
       metric.label
@@ -696,11 +738,13 @@ function renderLineSvg(series, metric) {
       ${gridLines}
       <line class="grid-line" x1="${padding.left}" y1="${padding.top + innerHeight}" x2="${padding.left + innerWidth}" y2="${padding.top + innerHeight}"></line>
       <line class="grid-line" x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${padding.top + innerHeight}"></line>
+      ${overlayPaths}
       <path class="line-path" d="${path}"></path>
       ${dots}
       ${xTicks}
       ${yTicks}
     </svg>
+    ${overlayLegend}
   `;
 }
 

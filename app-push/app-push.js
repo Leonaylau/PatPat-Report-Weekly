@@ -119,6 +119,8 @@ async function initializePushData() {
     if (state.rawRows.length) {
       setLatestCompleteWeekRange();
       syncStateToDateInputs();
+      const latestDate = state.rawRows.reduce((max, r) => (r.dateObj > max ? r.dateObj : max), state.rawRows[0].dateObj);
+      document.getElementById("dataFreshness").textContent = `数据截至: ${formatDateInput(latestDate)}`;
     }
 
     document.getElementById("fileMeta").textContent = `Loaded ${state.rawRows.length} app-push rows from ${usedPath}`;
@@ -347,6 +349,7 @@ function renderAll() {
   renderPushTable();
   renderContributionCharts();
   renderTrendCharts();
+  renderDayOfWeekAnalysis();
   renderAutomationWeeklyDetail();
   renderExcludedTable();
 }
@@ -467,6 +470,8 @@ function renderPushTable() {
       `;
     }).join("");
   }
+
+  renderRankingChart(document.getElementById("pushRankingChart"), grouped.slice(0, 10));
 
   thead.innerHTML = `
     <tr>
@@ -598,6 +603,26 @@ function renderBarChart(container, data) {
       <div class="bar-value">${escapeHtml(formatPercent(item.share))}</div>
     </div>
   `).join("");
+}
+
+function renderRankingChart(container, items) {
+  if (!items.length) {
+    container.classList.add("empty-chart");
+    container.innerHTML = "No push data for ranking.";
+    return;
+  }
+  const maxRevenue = Math.max(...items.map((r) => toNumber(r.revenue) || 0), 0.01);
+  container.classList.remove("empty-chart");
+  container.innerHTML = items.map((item, i) => {
+    const rev = toNumber(item.revenue) || 0;
+    const pct = (rev / maxRevenue) * 100;
+    return `
+    <div class="bar-row chart-tip" data-label="${escapeHtml(item.pushName)}" data-value="${escapeHtml(formatCurrency(rev))}">
+      <div class="bar-label">${i + 1}. ${escapeHtml(item.pushName)}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.max(pct, 0)}%"></div></div>
+      <div class="bar-value">${escapeHtml(formatCurrency(rev))}</div>
+    </div>`;
+  }).join("");
 }
 
 function renderTrendCharts() {
@@ -749,6 +774,41 @@ function buildTickIndexes(length, maxTicks) {
   return indexes;
 }
 
+function renderDayOfWeekAnalysis() {
+  const container = document.getElementById("dayOfWeekGrid");
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  if (!state.filteredRows.length) {
+    container.innerHTML = '<div class="empty-state">No data for day-of-week analysis.</div>';
+    return;
+  }
+
+  const buckets = Array.from({ length: 7 }, () => ({ sessions: 0, users: 0, purchasers: 0, revenue: 0 }));
+  state.filteredRows.forEach((row) => {
+    const d = row.dateObj.getDay();
+    buckets[d].sessions += toNumber(row.sessions) || 0;
+    buckets[d].users += toNumber(row.users) || 0;
+    buckets[d].purchasers += toNumber(row.purchasers) || 0;
+    buckets[d].revenue += toNumber(row.revenue) || 0;
+  });
+
+  const bestDay = buckets.reduce((bi, b, i, a) => b.revenue > a[bi].revenue ? i : bi, 0);
+
+  container.innerHTML = buckets.map((b, i) => {
+    const aov = b.purchasers ? b.revenue / b.purchasers : 0;
+    const cvr = b.users ? b.purchasers / b.users : 0;
+    const highlight = i === bestDay ? " dow-best" : "";
+    return `
+      <article class="metric-card${highlight}">
+        <p class="metric-label">${dayNames[i]}</p>
+        <p class="metric-value">${escapeHtml(formatCurrency(b.revenue))}</p>
+        <p class="metric-compare">${escapeHtml(formatNumber(b.sessions))} sessions · ${escapeHtml(formatNumber(b.users))} UV</p>
+        <p class="metric-compare">${escapeHtml(formatNumber(b.purchasers))} purch · AOV ${escapeHtml(formatCurrency(aov))} · CVR ${escapeHtml(formatPercent(cvr))}</p>
+      </article>
+    `;
+  }).join("");
+}
+
 function renderAutomationWeeklyDetail() {
   const container = document.getElementById("automationWeeklyDetail");
   const autoRows = state.classifiedRows.filter((row) => row.pushCategory === "automation");
@@ -796,10 +856,15 @@ function renderAutomationWeeklyDetail() {
       };
     });
 
+    const bestIdx = weekData.reduce((bi, w, i, a) => w.revenue > a[bi].revenue ? i : bi, 0);
+    const worstIdx = weekData.reduce((wi, w, i, a) => w.revenue < a[wi].revenue ? i : wi, 0);
+    const hasData = weekData.some((w) => w.revenue > 0);
+
     const tableRows = weekData.map((week, i) => {
       const prev = i > 0 ? weekData[i - 1] : null;
       const aov = week.purchasers ? week.revenue / week.purchasers : 0;
       const cvr = week.users ? week.purchasers / week.users : 0;
+      const rowCls = hasData && i === bestIdx ? ' class="week-best"' : hasData && i === worstIdx && bestIdx !== worstIdx ? ' class="week-worst"' : "";
 
       const wowCell = (cur, pri) => {
         if (!prev || !pri) return '<td class="wow-neutral">—</td>';
@@ -808,7 +873,7 @@ function renderAutomationWeeklyDetail() {
         return `<td class="${cls}">${escapeHtml(formatSignedPercent(pct))}</td>`;
       };
 
-      return `<tr>
+      return `<tr${rowCls}>
         <td>${escapeHtml(week.label)}</td>
         <td>${escapeHtml(formatNumber(week.sessions))}</td>
         ${wowCell(week.sessions, prev?.sessions)}
@@ -822,6 +887,23 @@ function renderAutomationWeeklyDetail() {
         <td>${escapeHtml(formatPercent(cvr))}</td>
       </tr>`;
     }).join("");
+
+    const totals = weekData.reduce((t, w) => {
+      t.sessions += w.sessions; t.users += w.users;
+      t.purchasers += w.purchasers; t.revenue += w.revenue;
+      return t;
+    }, { sessions: 0, users: 0, purchasers: 0, revenue: 0 });
+    const totalAov = totals.purchasers ? totals.revenue / totals.purchasers : 0;
+    const totalCvr = totals.users ? totals.purchasers / totals.users : 0;
+    const summaryRow = `<tr class="summary-row">
+      <td>Total</td>
+      <td>${escapeHtml(formatNumber(totals.sessions))}</td><td></td>
+      <td>${escapeHtml(formatNumber(totals.users))}</td><td></td>
+      <td>${escapeHtml(formatNumber(totals.purchasers))}</td><td></td>
+      <td>${escapeHtml(formatCurrency(totals.revenue))}</td><td></td>
+      <td>${escapeHtml(formatCurrency(totalAov))}</td>
+      <td>${escapeHtml(formatPercent(totalCvr))}</td>
+    </tr>`;
 
     return `
       <div class="automation-detail-block">
@@ -839,7 +921,7 @@ function renderAutomationWeeklyDetail() {
                 <th>CVR</th>
               </tr>
             </thead>
-            <tbody>${tableRows}</tbody>
+            <tbody>${tableRows}${summaryRow}</tbody>
           </table>
         </div>
       </div>
@@ -1095,6 +1177,7 @@ function renderEmptyStates(message) {
   document.getElementById("sessionsShareChart").innerHTML = message;
   document.getElementById("revenueShareChart").innerHTML = message;
   document.getElementById("trendGrid").innerHTML = `<div class="chart-card empty-chart">${escapeHtml(message)}</div>`;
+  document.getElementById("dayOfWeekGrid").innerHTML = `<div class="empty-state">${escapeHtml(message)}</div>`;
   document.getElementById("automationWeeklyDetail").innerHTML = `<div class="empty-state">${escapeHtml(message)}</div>`;
   document.querySelector("#excludedTable thead").innerHTML = "";
   document.querySelector("#excludedTable tbody").innerHTML = `<tr><td class="empty-cell">${escapeHtml(message)}</td></tr>`;
