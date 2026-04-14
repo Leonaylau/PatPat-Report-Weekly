@@ -420,6 +420,15 @@ tbody tr:hover {
   border-radius: 8px;
   background: #fff;
   padding: 16px;
+  transition: transform 0.25s ease;
+  transform-origin: center center;
+  cursor: crosshair;
+}
+
+.chart-card:hover {
+  transform: scale(1.35);
+  z-index: 10;
+  position: relative;
 }
 
 .chart-card h3 {
@@ -440,15 +449,6 @@ tbody tr:hover {
 .scatter-chart,
 .line-chart {
   margin-top: 12px;
-  transition: transform 0.25s ease;
-  transform-origin: center center;
-  cursor: crosshair;
-}
-
-.line-chart:hover {
-  transform: scale(1.35);
-  z-index: 10;
-  position: relative;
 }
 
 .bar-row {
