@@ -59,6 +59,7 @@ const state = {
 
 document.addEventListener("DOMContentLoaded", async () => {
   bindEvents();
+  initTooltip();
   await initializeRepositoryData();
 });
 
@@ -518,7 +519,7 @@ function renderBarChart(container, data) {
   container.innerHTML = data
     .map(
       (item) => `
-      <div class="bar-row">
+      <div class="bar-row chart-tip" data-label="${escapeAttribute(item.label)}" data-value="${escapeHtml(formatPercent(item.share))}">
         <div class="bar-label" title="${escapeAttribute(item.label)}">${escapeHtml(item.label)}</div>
         <div class="bar-track"><div class="bar-fill" style="width:${Math.max(item.share * 100, 0)}%"></div></div>
         <div class="bar-value">${escapeHtml(formatPercent(item.share))}</div>
@@ -571,13 +572,10 @@ function renderScatterChart({ element, rows, xKey, yKey, sizeKey, xLabel, yLabel
       const cx = scaleX(row[xKey]);
       const cy = scaleY(row[yKey]);
       const r = scaleR(row[sizeKey]);
-      const tooltip = `${row.flow}\n${xLabel}: ${formatValue(row[xKey], "rate")}\n${yLabel}: ${formatValue(
-        row[yKey],
-        yType
-      )}\nSize: ${formatValue(row[sizeKey], "number")}`;
+      const tipLabel = escapeHtml(row.flow);
+      const tipValue = escapeHtml(`${xLabel}: ${formatValue(row[xKey], "rate")} | ${yLabel}: ${formatValue(row[yKey], yType)}`);
       return `
-      <g>
-        <title>${escapeHtml(tooltip)}</title>
+      <g class="chart-tip" data-label="${tipLabel}" data-value="${tipValue}">
         <circle class="bubble" cx="${cx}" cy="${cy}" r="${r}"></circle>
         <text class="bubble-text" x="${cx}" y="${cy + 4}" text-anchor="middle">${escapeHtml(shortFlow(row.flow))}</text>
       </g>
@@ -661,8 +659,8 @@ function renderLineSvg(series, metric) {
       const x = scaleX(index);
       const y = scaleY(point.value);
       return `
-      <g>
-        <title>${escapeHtml(`${point.label}: ${formatValue(point.value, metric.type)}`)}</title>
+      <g class="chart-tip" data-label="${escapeHtml(point.label)}" data-value="${escapeHtml(formatValue(point.value, metric.type))}">
+        <circle cx="${x}" cy="${y}" r="16" fill="transparent"></circle>
         <circle class="line-dot" cx="${x}" cy="${y}" r="4"></circle>
         <text class="line-value" x="${x}" y="${y - 10}" text-anchor="middle">${escapeHtml(
         formatValue(point.value, metric.type)
@@ -1133,6 +1131,26 @@ function formatCurrency(value) {
 function shortFlow(flow) {
   const parts = String(flow || "").split(/\s+/).filter(Boolean);
   return parts.length ? parts.slice(0, 2).map((part) => part[0]).join("").toUpperCase() : "";
+}
+
+function initTooltip() {
+  const tip = document.createElement("div");
+  tip.className = "chart-tooltip";
+  document.body.appendChild(tip);
+
+  document.addEventListener("mouseover", (e) => {
+    const t = e.target.closest(".chart-tip");
+    if (!t) return;
+    tip.textContent = `${t.dataset.label}: ${t.dataset.value}`;
+    tip.style.display = "block";
+    const r = t.getBoundingClientRect();
+    tip.style.left = `${r.left + r.width / 2 - tip.offsetWidth / 2}px`;
+    tip.style.top = `${r.top - tip.offsetHeight - 8 + window.scrollY}px`;
+  });
+
+  document.addEventListener("mouseout", (e) => {
+    if (e.target.closest(".chart-tip")) tip.style.display = "none";
+  });
 }
 
 function escapeHtml(value) {

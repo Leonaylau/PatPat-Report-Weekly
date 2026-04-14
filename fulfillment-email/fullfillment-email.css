@@ -563,6 +563,48 @@ tbody tr:hover {
   }
 }
 
+.chart-tooltip {
+  position: absolute;
+  background: #141413;
+  color: #faf9f5;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  pointer-events: none;
+  z-index: 1000;
+  white-space: nowrap;
+  display: none;
+}
+
+.section-nav {
+  position: fixed;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 50;
+}
+
+.section-nav a {
+  padding: 5px 10px;
+  text-decoration: none;
+  color: var(--muted);
+  border-radius: 6px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  font-size: 11px;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.section-nav a:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 @media (max-width: 720px) {
   .page-shell {
     padding: 20px 16px 40px;
@@ -597,5 +639,9 @@ tbody tr:hover {
   .secondary-button,
   .danger-button {
     width: 100%;
+  }
+
+  .section-nav {
+    display: none;
   }
 }

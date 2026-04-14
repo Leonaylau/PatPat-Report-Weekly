@@ -40,6 +40,7 @@ const pushBucketLabelMap = {
 
 document.addEventListener("DOMContentLoaded", async () => {
   bindEvents();
+  initTooltip();
   await initializePushData();
 });
 
@@ -591,7 +592,7 @@ function renderBarChart(container, data) {
 
   container.classList.remove("empty-chart");
   container.innerHTML = data.map((item) => `
-    <div class="bar-row">
+    <div class="bar-row chart-tip" data-label="${escapeHtml(item.label)}" data-value="${escapeHtml(formatPercent(item.share))}">
       <div class="bar-label">${escapeHtml(item.label)}</div>
       <div class="bar-track"><div class="bar-fill" style="width:${Math.max(item.share * 100, 0)}%"></div></div>
       <div class="bar-value">${escapeHtml(formatPercent(item.share))}</div>
@@ -714,7 +715,7 @@ function renderLineSvg(series, metric) {
   const dots = points.map((point, index) => {
     const x = scaleX(index);
     const y = scaleY(point.value);
-    return `<circle class="line-dot" cx="${x}" cy="${y}" r="3.5"></circle>`;
+    return `<g class="chart-tip" data-label="${escapeHtml(point.label)}" data-value="${escapeHtml(formatValue(point.value, metric.type))}"><circle cx="${x}" cy="${y}" r="16" fill="transparent"/><circle class="line-dot" cx="${x}" cy="${y}" r="4"/></g>`;
   }).join("");
 
   const xTicks = tickIndexes.map((index) =>
@@ -1096,6 +1097,26 @@ function renderEmptyStates(message) {
   document.getElementById("automationWeeklyDetail").innerHTML = `<div class="empty-state">${escapeHtml(message)}</div>`;
   document.querySelector("#excludedTable thead").innerHTML = "";
   document.querySelector("#excludedTable tbody").innerHTML = `<tr><td class="empty-cell">${escapeHtml(message)}</td></tr>`;
+}
+
+function initTooltip() {
+  const tip = document.createElement("div");
+  tip.className = "chart-tooltip";
+  document.body.appendChild(tip);
+
+  document.addEventListener("mouseover", (e) => {
+    const t = e.target.closest(".chart-tip");
+    if (!t) return;
+    tip.textContent = `${t.dataset.label}: ${t.dataset.value}`;
+    tip.style.display = "block";
+    const r = t.getBoundingClientRect();
+    tip.style.left = `${r.left + r.width / 2 - tip.offsetWidth / 2}px`;
+    tip.style.top = `${r.top - tip.offsetHeight - 8 + window.scrollY}px`;
+  });
+
+  document.addEventListener("mouseout", (e) => {
+    if (e.target.closest(".chart-tip")) tip.style.display = "none";
+  });
 }
 
 function escapeHtml(value) {
