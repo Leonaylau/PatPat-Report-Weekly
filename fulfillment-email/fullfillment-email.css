@@ -440,6 +440,15 @@ tbody tr:hover {
 .scatter-chart,
 .line-chart {
   margin-top: 12px;
+  transition: transform 0.25s ease;
+  transform-origin: center center;
+  cursor: crosshair;
+}
+
+.line-chart:hover {
+  transform: scale(1.35);
+  z-index: 10;
+  position: relative;
 }
 
 .bar-row {
@@ -485,7 +494,7 @@ tbody tr:hover {
 
 .axis-label,
 .tick-label {
-  font-size: 12px;
+  font-size: 14px;
   fill: #87867f;
 }
 
