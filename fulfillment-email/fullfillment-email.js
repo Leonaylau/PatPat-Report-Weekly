@@ -59,6 +59,7 @@ const state = {
 
 document.addEventListener("DOMContentLoaded", async () => {
   bindEvents();
+  initTooltip();
   await initializeRepositoryData();
 });
 
@@ -115,6 +116,9 @@ async function initializeRepositoryData() {
     state.selectedWeek = state.store.weekOrder[state.store.weekOrder.length - 1] || "";
     autoSelectCompareWeek();
     state.statusMessage = `Loaded ${state.store.weekOrder.length} week(s) from ${MANIFEST_PATH}.`;
+    if (state.selectedWeek) {
+      document.getElementById("dataFreshness").textContent = `数据截至: ${state.selectedWeek}`;
+    }
     hydrateCurrentWeek();
   } catch (error) {
     state.statusMessage = `Failed to load repository data: ${error.message}`;
@@ -477,24 +481,53 @@ function renderEfficiencyCharts() {
 
 function renderTrendCharts() {
   const container = document.getElementById("trendGrid");
-  const weekSeries = state.store.weekOrder
+  const allWeeks = state.store.weekOrder
     .map((label) => ({ label, summary: state.store.weeks[label]?.summary || null }))
     .filter((item) => item.summary);
+  const weekSeries = allWeeks.slice(-4);
 
   if (!weekSeries.length) {
     container.innerHTML = '<div class="chart-card empty-chart">Repository trend data is not available yet.</div>';
     return;
   }
 
+  const overlayColors = ["#c96442", "#248a3d", "#87867f"];
+
   container.innerHTML = trendMetrics
-    .map(
-      (metric) => `
+    .map((metric) => {
+      const flowNames = new Set();
+      weekSeries.forEach((w) => {
+        const weekObj = state.store.weeks[w.label];
+        if (weekObj?.rows) weekObj.rows.forEach((r) => flowNames.add(r.flow));
+      });
+
+      const flowTotals = [...flowNames].map((flow) => {
+        const total = weekSeries.reduce((sum, w) => {
+          const weekObj = state.store.weeks[w.label];
+          const row = weekObj?.rows?.find((r) => r.flow === flow);
+          return sum + (row ? toNumber(row[metric.key]) || 0 : 0);
+        }, 0);
+        return { flow, total };
+      }).sort((a, b) => b.total - a.total);
+
+      const topFlows = flowTotals.slice(0, 3);
+      const overlays = topFlows.map((tf, i) => ({
+        label: tf.flow,
+        color: overlayColors[i % overlayColors.length],
+        points: weekSeries.map((w) => {
+          const weekObj = state.store.weeks[w.label];
+          const row = weekObj?.rows?.find((r) => r.flow === tf.flow);
+          return { label: w.label, value: row ? toNumber(row[metric.key]) || 0 : 0 };
+        }),
+      }));
+
+      return `
       <div class="chart-card">
         <h3>${escapeHtml(metric.label)}</h3>
-        <div class="line-chart">${renderLineSvg(weekSeries, metric)}</div>
+        <div class="line-chart">${renderLineSvg(weekSeries, metric, overlays)}</div>
       </div>
-    `
-    )
+    `;
+    })
     .join("");
 }
 
@@ -518,7 +551,7 @@ function renderBarChart(container, data) {
   container.innerHTML = data
     .map(
       (item) => `
-      <div class="bar-row">
+      <div class="bar-row chart-tip" data-label="${escapeAttribute(item.label)}" data-value="${escapeHtml(formatPercent(item.share))}">
         <div class="bar-label" title="${escapeAttribute(item.label)}">${escapeHtml(item.label)}</div>
         <div class="bar-track"><div class="bar-fill" style="width:${Math.max(item.share * 100, 0)}%"></div></div>
         <div class="bar-value">${escapeHtml(formatPercent(item.share))}</div>
@@ -571,13 +604,10 @@ function renderScatterChart({ element, rows, xKey, yKey, sizeKey, xLabel, yLabel
       const cx = scaleX(row[xKey]);
       const cy = scaleY(row[yKey]);
       const r = scaleR(row[sizeKey]);
-      const tooltip = `${row.flow}\n${xLabel}: ${formatValue(row[xKey], "rate")}\n${yLabel}: ${formatValue(
-        row[yKey],
-        yType
-      )}\nSize: ${formatValue(row[sizeKey], "number")}`;
+      const tipLabel = escapeHtml(row.flow);
+      const tipValue = escapeHtml(`${xLabel}: ${formatValue(row[xKey], "rate")} | ${yLabel}: ${formatValue(row[yKey], yType)}`);
       return `
-      <g>
-        <title>${escapeHtml(tooltip)}</title>
+      <g class="chart-tip" data-label="${tipLabel}" data-value="${tipValue}">
         <circle class="bubble" cx="${cx}" cy="${cy}" r="${r}"></circle>
         <text class="bubble-text" x="${cx}" y="${cy + 4}" text-anchor="middle">${escapeHtml(shortFlow(row.flow))}</text>
       </g>
@@ -627,16 +657,16 @@ function renderScatterChart({ element, rows, xKey, yKey, sizeKey, xLabel, yLabel
   `;
 }
 
-function renderLineSvg(series, metric) {
+function renderLineSvg(series, metric, overlays) {
   const points = series
     .map((item) => ({ label: item.label, value: item.summary[metric.key] }))
     .filter((item) => item.value !== null && item.value !== undefined);
 
   if (!points.length) return '<div class="empty-chart">No data available.</div>';
 
-  const width = 620;
+  const width = 820;
   const height = 260;
-  const padding = { top: 20, right: 20, bottom: 52, left: 58 };
+  const padding = { top: 20, right: 60, bottom: 52, left: 58 };
   const innerWidth = width - padding.left - padding.right;
   const innerHeight = height - padding.top - padding.bottom;
   const maxValue = Math.max(...points.map((point) => toNumber(point.value) || 0), 0.01);
@@ -661,8 +691,8 @@ function renderLineSvg(series, metric) {
       const x = scaleX(index);
       const y = scaleY(point.value);
       return `
-      <g>
-        <title>${escapeHtml(`${point.label}: ${formatValue(point.value, metric.type)}`)}</title>
+      <g class="chart-tip" data-label="${escapeHtml(point.label)}" data-value="${escapeHtml(formatValue(point.value, metric.type))}">
+        <circle cx="${x}" cy="${y}" r="16" fill="transparent"></circle>
         <circle class="line-dot" cx="${x}" cy="${y}" r="4"></circle>
         <text class="line-value" x="${x}" y="${y - 10}" text-anchor="middle">${escapeHtml(
         formatValue(point.value, metric.type)
@@ -673,11 +703,10 @@ function renderLineSvg(series, metric) {
     .join("");
 
   const xTicks = points
-    .map(
-      (point, index) =>
-        `<text class="tick-label" x="${scaleX(index)}" y="${height - 18}" text-anchor="middle">${escapeHtml(
-          point.label
-        )}</text>`
+    .map((point, index) =>
+      `<text class="tick-label" x="${scaleX(index)}" y="${height - 18}" text-anchor="middle">${escapeHtml(
+        point.label
+      )}</text>`
     )
     .join("");
 
@@ -691,6 +720,17 @@ function renderLineSvg(series, metric) {
     })
     .join("");
 
+  const overlayPaths = (overlays || []).map((ov) => {
+    const ovPath = ov.points
+      .map((p, i) => `${i === 0 ? "M" : "L"}${scaleX(i)} ${scaleY(p.value)}`)
+      .join(" ");
+    return `<path class="line-path-overlay" d="${ovPath}" style="stroke:${ov.color};stroke-width:1.5;fill:none;opacity:0.7"></path>`;
+  }).join("");
+
+  const overlayLegend = (overlays || []).length ? `<div class="chart-legend">${(overlays || []).map((ov) =>
+    `<span class="legend-item"><span class="legend-swatch" style="background:${ov.color}"></span>${escapeHtml(ov.label)}</span>`
+  ).join("")}</div>` : "";
+
   return `
     <svg class="line-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeAttribute(
       metric.label
@@ -698,11 +738,13 @@ function renderLineSvg(series, metric) {
       ${gridLines}
       <line class="grid-line" x1="${padding.left}" y1="${padding.top + innerHeight}" x2="${padding.left + innerWidth}" y2="${padding.top + innerHeight}"></line>
       <line class="grid-line" x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${padding.top + innerHeight}"></line>
+      ${overlayPaths}
       <path class="line-path" d="${path}"></path>
       ${dots}
       ${xTicks}
       ${yTicks}
     </svg>
+    ${overlayLegend}
   `;
 }
 
@@ -1133,6 +1175,26 @@ function formatCurrency(value) {
 function shortFlow(flow) {
   const parts = String(flow || "").split(/\s+/).filter(Boolean);
   return parts.length ? parts.slice(0, 2).map((part) => part[0]).join("").toUpperCase() : "";
+}
+
+function initTooltip() {
+  const tip = document.createElement("div");
+  tip.className = "chart-tooltip";
+  document.body.appendChild(tip);
+
+  document.addEventListener("mouseover", (e) => {
+    const t = e.target.closest(".chart-tip");
+    if (!t) return;
+    tip.textContent = `${t.dataset.label}: ${t.dataset.value}`;
+    tip.style.display = "block";
+    const r = t.getBoundingClientRect();
+    tip.style.left = `${r.left + r.width / 2 - tip.offsetWidth / 2}px`;
+    tip.style.top = `${r.top - tip.offsetHeight - 8 + window.scrollY}px`;
+  });
+
+  document.addEventListener("mouseout", (e) => {
+    if (e.target.closest(".chart-tip")) tip.style.display = "none";
+  });
 }
 
 function escapeHtml(value) {
