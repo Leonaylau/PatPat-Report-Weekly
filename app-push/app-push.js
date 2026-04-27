@@ -11,6 +11,9 @@ const state = {
   compareStart: "",
   compareEnd: "",
   pushCategoryFilter: "all",
+  pushBucketFilter: "all",
+  pushSearch: "",
+  zeroRowFilter: "show",
   productTitleFilter: [],
   productSearch: "",
 };
@@ -79,6 +82,21 @@ function bindEvents() {
 
   document.getElementById("pushCategoryFilter")?.addEventListener("change", (e) => {
     state.pushCategoryFilter = e.target.value;
+    applyFiltersAndRender();
+  });
+
+  document.getElementById("pushBucketFilter")?.addEventListener("change", (e) => {
+    state.pushBucketFilter = e.target.value;
+    applyFiltersAndRender();
+  });
+
+  document.getElementById("pushSearch")?.addEventListener("input", (e) => {
+    state.pushSearch = e.target.value.trim().toLowerCase();
+    applyFiltersAndRender();
+  });
+
+  document.getElementById("zeroRowFilter")?.addEventListener("change", (e) => {
+    state.zeroRowFilter = e.target.value;
     applyFiltersAndRender();
   });
 
@@ -466,7 +484,14 @@ function matchesPushFilters(row) {
     state.pushCategoryFilter === "all" ||
     state.pushCategoryFilter === row.pushCategory;
 
-  return categoryMatch && matchesProductFilter(row);
+  const bucketMatch =
+    state.pushBucketFilter === "all" ||
+    state.pushBucketFilter === row.pushBucket;
+
+  const searchMatch = !state.pushSearch || row.pushName.toLowerCase().includes(state.pushSearch);
+  const zeroRowMatch = state.zeroRowFilter === "show" || (toNumber(row.purchasers) || 0) !== 0;
+
+  return categoryMatch && bucketMatch && searchMatch && zeroRowMatch && matchesProductFilter(row);
 }
 
 function matchesProductFilter(row) {
@@ -478,6 +503,7 @@ function matchesProductFilter(row) {
 function renderAll() {
   renderHeaderSummary();
   renderOverview();
+  renderPushTable();
   renderCategoryComparison();
   renderProductSection();
   renderContributionCharts();
@@ -549,6 +575,115 @@ function aggregateRows(rows) {
   agg.aov = agg.purchasers ? agg.revenue / agg.purchasers : 0;
   agg.cvr = agg.sessions ? agg.purchasers / agg.sessions : 0;
   return agg;
+}
+
+function renderPushTable() {
+  const thead = document.querySelector("#pushTable thead");
+  const tbody = document.querySelector("#pushTable tbody");
+  const context = document.getElementById("pushTableContext");
+  const pushOverview = document.getElementById("pushOverviewGrid");
+
+  context.textContent =
+    `Current: ${state.currentStart} ~ ${state.currentEnd} · Push Category: ${pushCategoryLabelMap[state.pushCategoryFilter]} · Push Name Group: ${pushBucketLabelMap[state.pushBucketFilter]}`;
+
+  const grouped = groupByPushName(state.filteredRows);
+
+  const currentAgg = aggregateRows(state.filteredRows);
+  const compareRows = getCompareRows();
+  const compareAgg = aggregateRows(compareRows);
+
+  if (!state.filteredRows.length) {
+    pushOverview.innerHTML = "";
+  } else {
+    pushOverview.innerHTML = overviewMetrics.map((metric) => {
+      const wow = buildWowObject(currentAgg[metric.key], compareAgg[metric.key], metric.type, metric.inverse);
+      return `
+        <article class="metric-card">
+          <p class="metric-label">${escapeHtml(metric.label)}</p>
+          <p class="metric-value">${escapeHtml(formatValue(currentAgg[metric.key], metric.type))}</p>
+          <p class="metric-compare">Compare: ${escapeHtml(formatValue(compareAgg[metric.key], metric.type))}</p>
+          <div class="metric-wow ${wow.className}">
+            <span class="metric-wow-arrow">${escapeHtml(wow.arrow)}</span>
+            <span class="metric-wow-value">${escapeHtml(wow.pctOnlyLabel)}</span>
+          </div>
+        </article>
+      `;
+    }).join("");
+  }
+
+  renderRankingChart(document.getElementById("pushRankingChart"), grouped.slice(0, 10));
+
+  thead.innerHTML = `
+    <tr>
+      <th>Push Name (Manual term)</th>
+      <th>Push Category</th>
+      <th>Push Name Group</th>
+      <th>Resolved Push Date</th>
+      <th>Sessions</th>
+      <th>Purchasers</th>
+      <th>Revenue</th>
+      <th>AOV</th>
+      <th>CVR (Purch / Sess)</th>
+    </tr>
+  `;
+
+  if (!grouped.length) {
+    tbody.innerHTML = '<tr><td class="empty-cell" colspan="9">No push rows match the current filters.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = grouped.map((row) => {
+    const aov = (toNumber(row.purchasers) || 0) ? (toNumber(row.revenue) || 0) / (toNumber(row.purchasers) || 1) : 0;
+    const cvr = (toNumber(row.sessions) || 0) ? (toNumber(row.purchasers) || 0) / (toNumber(row.sessions) || 1) : 0;
+    return `
+    <tr>
+      <td>${escapeHtml(row.pushName)}</td>
+      <td>${renderPill(row.pushCategory, "category")}</td>
+      <td>${renderPill(row.pushBucket, "bucket")}</td>
+      <td>${escapeHtml(row.resolvedManualDate ? formatDateInput(row.resolvedManualDate) : "-")}</td>
+      <td>${escapeHtml(formatNumber(row.sessions))}</td>
+      <td>${escapeHtml(formatNumber(row.purchasers))}</td>
+      <td>${escapeHtml(formatCurrency(row.revenue))}</td>
+      <td>${escapeHtml(formatCurrency(aov))}</td>
+      <td>${escapeHtml(formatPercent(cvr))}</td>
+    </tr>
+  `}).join("");
+}
+
+function groupByPushName(rows) {
+  const map = new Map();
+  rows.forEach((row) => {
+    const key = row.pushName;
+    if (!map.has(key)) {
+      map.set(key, {
+        pushName: row.pushName,
+        pushCategory: row.pushCategory,
+        pushBucket: row.pushBucket,
+        resolvedManualDate: row.resolvedManualDate,
+        sessions: 0,
+        purchasers: 0,
+        revenue: 0,
+      });
+    }
+    const item = map.get(key);
+    item.sessions += toNumber(row.sessions) || 0;
+    item.purchasers += toNumber(row.purchasers) || 0;
+    item.revenue += toNumber(row.revenue) || 0;
+  });
+  return [...map.values()].sort((a, b) => {
+    const revenueGap = (toNumber(b.revenue) || 0) - (toNumber(a.revenue) || 0);
+    if (revenueGap !== 0) return revenueGap;
+    return (toNumber(b.sessions) || 0) - (toNumber(a.sessions) || 0);
+  });
+}
+
+function getCompareRows() {
+  const compareStart = parseInputDate(state.compareStart);
+  const compareEnd = parseInputDate(state.compareEnd);
+  if (!compareStart || !compareEnd) return [];
+  return state.rawRows
+    .map((row) => classifyRow(row, compareStart, compareEnd))
+    .filter((row) => isRowIncluded(row, compareStart, compareEnd));
 }
 
 function renderCategoryComparison() {
@@ -1314,6 +1449,14 @@ function formatSignedPercent(value) {
 
 function renderEmptyStates(message) {
   document.getElementById("overviewGrid").innerHTML = `<div class="empty-state">${escapeHtml(message)}</div>`;
+  const pushHead = document.querySelector("#pushTable thead");
+  if (pushHead) pushHead.innerHTML = "";
+  const pushBody = document.querySelector("#pushTable tbody");
+  if (pushBody) pushBody.innerHTML = `<tr><td class="empty-cell">${escapeHtml(message)}</td></tr>`;
+  const pushOverview = document.getElementById("pushOverviewGrid");
+  if (pushOverview) pushOverview.innerHTML = "";
+  const pushRanking = document.getElementById("pushRankingChart");
+  if (pushRanking) pushRanking.innerHTML = escapeHtml(message);
   const catCard = document.getElementById("categoryCardGrid");
   if (catCard) catCard.innerHTML = `<div class="empty-state">${escapeHtml(message)}</div>`;
   const catTrend = document.getElementById("categoryTrendGrid");
