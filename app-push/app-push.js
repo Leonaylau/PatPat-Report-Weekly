@@ -4,29 +4,35 @@ const state = {
   overviewRows: [],
   filteredRows: [],
   excludedRows: [],
+  productsByTxId: new Map(),
+  productCatalog: [],
   currentStart: "",
   currentEnd: "",
   compareStart: "",
   compareEnd: "",
   pushCategoryFilter: "all",
-  pushBucketFilter: "all",
-  pushSearch: "",
-  zeroRowFilter: "show",
+  productTitleFilter: [],
+  productSearch: "",
 };
 
 const overviewMetrics = [
   { label: "Sessions", key: "sessions", type: "number", inverse: false },
-  { label: "Users / UV", key: "users", type: "number", inverse: false },
-  { label: "Purchasers", key: "purchasers", type: "number", inverse: false },
-  { label: "Revenue", key: "revenue", type: "currency", inverse: false },
+  { label: "Total Purchasers", key: "purchasers", type: "number", inverse: false },
+  { label: "Total Revenue", key: "revenue", type: "currency", inverse: false },
   { label: "AOV (客单价)", key: "aov", type: "currency", inverse: false },
-  { label: "CVR (转化率)", key: "cvr", type: "rate", inverse: false },
+  { label: "CVR (Purchasers / Sessions)", key: "cvr", type: "rate", inverse: false },
+];
+
+const trendMetrics = [
+  { label: "Weekly Purchasers", key: "purchasers", type: "number" },
+  { label: "Weekly Revenue", key: "revenue", type: "currency" },
+  { label: "Weekly Sessions", key: "sessions", type: "number" },
 ];
 
 const pushCategoryLabelMap = {
   all: "All",
-  manual: "Manual Push",
-  automation: "Automation Push",
+  manual: "Manual Push (手动PUSH)",
+  automation: "Automation Push (自动化PUSH)",
 };
 
 const pushBucketLabelMap = {
@@ -37,6 +43,13 @@ const pushBucketLabelMap = {
   future: "Future Push",
   invalid: "Invalid Manual Name",
 };
+
+const SERIES_COLORS = {
+  automation: "#c96442",
+  manual: "#3b6cb1",
+};
+
+const NOT_SET_VALUES = new Set(["", "(not set)"]);
 
 document.addEventListener("DOMContentLoaded", async () => {
   bindEvents();
@@ -69,52 +82,53 @@ function bindEvents() {
     applyFiltersAndRender();
   });
 
-  document.getElementById("pushBucketFilter")?.addEventListener("change", (e) => {
-    state.pushBucketFilter = e.target.value;
+  document.getElementById("productTitleFilter")?.addEventListener("change", (e) => {
+    const select = e.target;
+    state.productTitleFilter = Array.from(select.selectedOptions).map((opt) => opt.value);
     applyFiltersAndRender();
   });
 
-  document.getElementById("pushSearch")?.addEventListener("input", (e) => {
-    state.pushSearch = e.target.value.trim().toLowerCase();
+  document.getElementById("productTitleClear")?.addEventListener("click", () => {
+    state.productTitleFilter = [];
+    syncProductFilterUi();
     applyFiltersAndRender();
   });
 
-  document.getElementById("zeroRowFilter")?.addEventListener("change", (e) => {
-    state.zeroRowFilter = e.target.value;
-    applyFiltersAndRender();
+  document.getElementById("productSearch")?.addEventListener("input", (e) => {
+    state.productSearch = e.target.value.trim().toLowerCase();
+    renderProductSection();
   });
 }
 
 async function initializePushData() {
   try {
-    const pathCandidates = [
-      "./data/current.csv",
-      "./data/raw/current.csv",
-      "./data/raw/push.csv",
+    const mainCandidates = ["./data/current.csv", "./data/raw/current.csv"];
+    const productCandidates = [
+      "./data/orders_with_date_jan_apr_2026.csv",
+      "./data/products.csv",
+      "./data/raw/orders_with_date_jan_apr_2026.csv",
+      "./data/raw/products.csv",
     ];
 
-    let text = null;
-    let usedPath = "";
+    const mainResult = await fetchFirstAvailable(mainCandidates);
+    if (!mainResult) throw new Error("No app-push CSV found in ./data/");
 
-    for (const path of pathCandidates) {
-      try {
-        const response = await fetch(path, { cache: "no-store" });
-        if (response.ok) {
-          text = await response.text();
-          usedPath = path;
-          break;
-        }
-      } catch {
-        // ignore
-      }
-    }
+    const productsResult = await fetchFirstAvailable(productCandidates);
 
-    if (!text) {
-      throw new Error("No app-push CSV found in ./data/");
-    }
-
-    const parsed = parsePushCsv(text);
+    const parsed = parsePushCsv(mainResult.text);
     state.rawRows = parsed.rows;
+
+    if (productsResult) {
+      const productData = parseProductsCsv(productsResult.text);
+      state.productsByTxId = productData.byTxId;
+      state.productCatalog = productData.catalog;
+    } else {
+      state.productsByTxId = new Map();
+      state.productCatalog = [];
+    }
+
+    attachProductsToRows(state.rawRows, state.productsByTxId);
+    populateProductTitleFilterUi(state.productCatalog);
 
     if (state.rawRows.length) {
       setLatestCompleteWeekRange();
@@ -123,12 +137,30 @@ async function initializePushData() {
       document.getElementById("dataFreshness").textContent = `数据截至: ${formatDateInput(latestDate)}`;
     }
 
-    document.getElementById("fileMeta").textContent = `Loaded ${state.rawRows.length} app-push rows from ${usedPath}`;
+    const productCountText = productsResult
+      ? ` · ${state.productCatalog.length} product titles from ${productsResult.path}`
+      : " · products file not found (Product titles will display as Unknown)";
+    document.getElementById("fileMeta").textContent = `Loaded ${state.rawRows.length} app-push rows from ${mainResult.path}${productCountText}`;
     applyFiltersAndRender();
   } catch (error) {
     document.getElementById("fileMeta").textContent = `Failed to load app-push data: ${error.message}`;
     renderEmptyStates(error.message);
   }
+}
+
+async function fetchFirstAvailable(paths) {
+  for (const path of paths) {
+    try {
+      const response = await fetch(path, { cache: "no-store" });
+      if (response.ok) {
+        const text = await response.text();
+        return { text, path };
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return null;
 }
 
 function parsePushCsv(text) {
@@ -142,25 +174,152 @@ function parsePushCsv(text) {
 
   const rows = records
     .map(mapPushRow)
-    .filter((row) => row.dateObj && row.pushName && row.pushName.toLowerCase() !== "grand total");
+    .filter((row) => row.dateObj && row.pushName && !row.isGrandTotal);
 
   return { rows };
 }
 
+function parseProductsCsv(text) {
+  const cleanLines = text
+    .split(/\r?\n/)
+    .filter((line) => line.trim() !== "")
+    .filter((line) => !line.trim().startsWith("#"));
+
+  const csvText = cleanLines.join("\n");
+  const records = parseCsv(csvText);
+
+  const byTxId = new Map();
+  const titleSet = new Set();
+
+  records.forEach((raw) => {
+    const txId = normalizeText(pickField(raw, ["Transaction ID", "transaction ID", "TransactionID", "transaction id"]));
+    const title = normalizeText(pickField(raw, ["Product title", "Product Title", "product title"]));
+    if (!txId || isNotSet(txId)) return;
+    if (!title || isNotSet(title)) return;
+
+    const ordersRaw = pickField(raw, ["Orders", "orders", "Order"]);
+    const orders = parseNumber(ordersRaw);
+    const ordersValue = orders === null ? 1 : orders;
+
+    if (!byTxId.has(txId)) byTxId.set(txId, []);
+    const list = byTxId.get(txId);
+    const existing = list.find((entry) => entry.productTitle === title);
+    if (existing) {
+      existing.orders += ordersValue;
+    } else {
+      list.push({ productTitle: title, orders: ordersValue });
+    }
+    titleSet.add(title);
+  });
+
+  return {
+    byTxId,
+    catalog: [...titleSet].sort((a, b) => a.localeCompare(b)),
+  };
+}
+
+function pickField(record, keys) {
+  for (const key of keys) {
+    if (record[key] !== undefined && record[key] !== null && String(record[key]).trim() !== "") {
+      return record[key];
+    }
+  }
+  return "";
+}
+
+function isNotSet(value) {
+  return NOT_SET_VALUES.has(String(value || "").trim().toLowerCase());
+}
+
 function mapPushRow(raw) {
   const dateText = normalizeText(raw["Date"]);
-  const pushName = normalizePushName(normalizeText(raw["Session manual term"]));
+  const transactionIdRaw = normalizeText(pickField(raw, ["Transaction ID", "transaction ID", "TransactionID", "transaction id"]));
+  const sourceMediumRaw = normalizeText(pickField(raw, ["Source / medium", "Source/medium", "source / medium"]));
+  const manualTermRaw = normalizeText(pickField(raw, ["Manual term", "manual term"]));
+  const sessionManualTermRaw = normalizeText(pickField(raw, ["Session Manual term", "Session manual term", "session manual term"]));
+  const sessionsRaw = pickField(raw, ["Sessions", "sessions"]);
+  const revenueRaw = pickField(raw, ["Total revenue", "total revenue"]);
+
   const dateObj = parseFlexibleDate(dateText);
+
+  const isGrandTotal = (manualTermRaw + sessionManualTermRaw + transactionIdRaw + dateText)
+    .toLowerCase()
+    .includes("grand total");
+
+  const transactionId = isNotSet(transactionIdRaw) ? "" : transactionIdRaw;
+
+  // Prefer Manual term as the campaign name; fall back to Session manual term.
+  let pushName = isNotSet(manualTermRaw) ? "" : manualTermRaw;
+  if (!pushName) pushName = isNotSet(sessionManualTermRaw) ? "" : sessionManualTermRaw;
+  if (!pushName) pushName = "(not set)";
+  pushName = normalizePushName(pushName);
+
+  const sourceMedium = sourceMediumRaw;
+  const sourceCategory = sourceMediumToCategory(sourceMedium);
 
   return {
     date: dateText,
     dateObj,
     pushName,
-    sessions: parseNumber(raw["Sessions"]),
-    users: parseNumber(raw["Total users"]),
-    purchasers: parseNumber(raw["Total purchasers"]),
-    revenue: parseNumber(raw["Total revenue"]),
+    sessionManualTerm: sessionManualTermRaw,
+    manualTerm: manualTermRaw,
+    sourceMedium,
+    sourceCategory,
+    transactionId,
+    sessions: parseNumber(sessionsRaw),
+    purchasers: transactionId ? 1 : 0,
+    revenue: parseNumber(revenueRaw),
+    isGrandTotal,
+    productTitles: [],
+    productTitlesLabel: "Unknown",
+    productOrdersByTitle: new Map(),
   };
+}
+
+function sourceMediumToCategory(sourceMedium) {
+  const value = String(sourceMedium || "").trim().toLowerCase();
+  if (!value) return null;
+  if (value.startsWith("automation")) return "automation";
+  if (value.startsWith("manual")) return "manual";
+  return null;
+}
+
+function attachProductsToRows(rows, productsByTxId) {
+  rows.forEach((row) => {
+    const txId = row.transactionId;
+    if (!txId) {
+      row.productTitles = [];
+      row.productTitlesLabel = "Unknown";
+      row.productOrdersByTitle = new Map();
+      return;
+    }
+    const entries = productsByTxId.get(txId);
+    if (!entries || !entries.length) {
+      row.productTitles = [];
+      row.productTitlesLabel = "Unknown";
+      row.productOrdersByTitle = new Map();
+      return;
+    }
+    row.productTitles = entries.map((entry) => entry.productTitle);
+    row.productTitlesLabel = row.productTitles.join(" | ");
+    row.productOrdersByTitle = new Map(entries.map((entry) => [entry.productTitle, entry.orders]));
+  });
+}
+
+function populateProductTitleFilterUi(catalog) {
+  const select = document.getElementById("productTitleFilter");
+  if (!select) return;
+  select.innerHTML = catalog.map((title) => `<option value="${escapeHtml(title)}">${escapeHtml(title)}</option>`).join("");
+  syncProductFilterUi();
+}
+
+function syncProductFilterUi() {
+  const select = document.getElementById("productTitleFilter");
+  if (!select) return;
+  const wanted = new Set(state.productTitleFilter);
+  Array.from(select.options).forEach((opt) => {
+    opt.selected = wanted.has(opt.value);
+  });
 }
 
 function normalizePushName(name) {
@@ -227,7 +386,7 @@ function applyFiltersAndRender() {
 
   state.overviewRows = state.classifiedRows.filter((row) => {
     const inDateRange = row.dateObj >= currentStart && row.dateObj <= currentEnd;
-    return inDateRange && row.pushBucket !== "future" && row.pushBucket !== "invalid";
+    return inDateRange && row.pushBucket !== "future" && row.pushBucket !== "invalid" && matchesProductFilter(row);
   });
 
   state.filteredRows = state.classifiedRows.filter((row) => isRowIncluded(row, currentStart, currentEnd));
@@ -236,8 +395,8 @@ function applyFiltersAndRender() {
 }
 
 function classifyRow(row, currentStart, currentEnd) {
-  const pushCategory = classifyPushCategory(row.pushName);
-  const resolvedManualDate = resolvePushNameDate(row.pushName, currentStart, currentEnd);
+  const pushCategory = row.sourceCategory || classifyPushCategoryFromName(row.pushName);
+  const resolvedManualDate = pushCategory === "manual" ? resolvePushNameDate(row.pushName, currentStart, currentEnd) : null;
   const pushBucket = classifyPushBucket(pushCategory, resolvedManualDate, currentStart, currentEnd);
 
   return {
@@ -248,30 +407,9 @@ function classifyRow(row, currentStart, currentEnd) {
   };
 }
 
-function classifyPushCategory(pushName) {
+function classifyPushCategoryFromName(pushName) {
   const name = String(pushName || "").trim().toLowerCase();
-
-  const automationPushNames = [
-    "pushwelcom01",
-    "cartship",
-    "cart30m",
-    "cart2h",
-    "cart24h",
-    "quickship",
-    "view3",
-    "checkout",
-    "checkout1",
-    "cart15off",
-  ];
-
-  if (automationPushNames.includes(name)) {
-    return "automation";
-  }
-
-  if (/pu+sh/i.test(name)) {
-    return "manual";
-  }
-
+  if (/pu+sh/i.test(name)) return "manual";
   return "automation";
 }
 
@@ -326,27 +464,22 @@ function isRowIncluded(row, startDate, endDate) {
 function matchesPushFilters(row) {
   const categoryMatch =
     state.pushCategoryFilter === "all" ||
-    (state.pushCategoryFilter === "manual" && row.pushCategory === "manual") ||
-    (state.pushCategoryFilter === "automation" && row.pushCategory === "automation");
+    state.pushCategoryFilter === row.pushCategory;
 
-  const bucketMatch =
-    state.pushBucketFilter === "all" ||
-    (state.pushBucketFilter === "current" && row.pushBucket === "current") ||
-    (state.pushBucketFilter === "past" && row.pushBucket === "past") ||
-    (state.pushBucketFilter === "automation" && row.pushBucket === "automation") ||
-    (state.pushBucketFilter === "future" && row.pushBucket === "future") ||
-    (state.pushBucketFilter === "invalid" && row.pushBucket === "invalid");
+  return categoryMatch && matchesProductFilter(row);
+}
 
-  const searchMatch = !state.pushSearch || row.pushName.toLowerCase().includes(state.pushSearch);
-  const zeroRowMatch = state.zeroRowFilter === "show" || (toNumber(row.purchasers) || 0) !== 0;
-
-  return categoryMatch && bucketMatch && searchMatch && zeroRowMatch;
+function matchesProductFilter(row) {
+  if (!state.productTitleFilter.length) return true;
+  if (!row.productTitles.length) return false;
+  return row.productTitles.some((t) => state.productTitleFilter.includes(t));
 }
 
 function renderAll() {
   renderHeaderSummary();
   renderOverview();
-  renderPushTable();
+  renderCategoryComparison();
+  renderProductSection();
   renderContributionCharts();
   renderTrendCharts();
   renderDayOfWeekAnalysis();
@@ -355,8 +488,11 @@ function renderAll() {
 }
 
 function renderHeaderSummary() {
+  const productLabel = state.productTitleFilter.length
+    ? `${state.productTitleFilter.length} selected`
+    : "All Products";
   document.getElementById("headerSummary").textContent =
-    `Current Period: ${state.currentStart || "--"} ~ ${state.currentEnd || "--"} ｜ Compare Period: ${state.compareStart || "--"} ~ ${state.compareEnd || "--"} ｜ Push Category: ${pushCategoryLabelMap[state.pushCategoryFilter]} ｜ Push Name Group: ${pushBucketLabelMap[state.pushBucketFilter]}`;
+    `Current Period: ${state.currentStart || "--"} ~ ${state.currentEnd || "--"} ｜ Compare Period: ${state.compareStart || "--"} ~ ${state.compareEnd || "--"} ｜ Push Category: ${pushCategoryLabelMap[state.pushCategoryFilter]} ｜ Product Title: ${productLabel}`;
 }
 
 function renderOverview() {
@@ -376,7 +512,7 @@ function renderOverview() {
   const compareRows = (compareStart && compareEnd)
     ? state.classifiedRows.filter((row) => {
         const inRange = row.dateObj >= compareStart && row.dateObj <= compareEnd;
-        return inRange && row.pushBucket !== "future" && row.pushBucket !== "invalid";
+        return inRange && row.pushBucket !== "future" && row.pushBucket !== "invalid" && matchesProductFilter(row);
       })
     : [];
   const compareAgg = aggregateRows(compareRows);
@@ -385,13 +521,7 @@ function renderOverview() {
     `Current: ${state.currentStart} ~ ${state.currentEnd} · Compare: ${state.compareStart} ~ ${state.compareEnd}`;
 
   container.innerHTML = overviewMetrics.map((metric) => {
-    const wow = buildWowObject(
-      currentAgg[metric.key],
-      compareAgg[metric.key],
-      metric.type,
-      metric.inverse
-    );
-
+    const wow = buildWowObject(currentAgg[metric.key], compareAgg[metric.key], metric.type, metric.inverse);
     return `
       <article class="metric-card">
         <p class="metric-label">${escapeHtml(metric.label)}</p>
@@ -406,162 +536,230 @@ function renderOverview() {
   }).join("");
 }
 
-function getCompareRows() {
-  const compareStart = parseInputDate(state.compareStart);
-  const compareEnd = parseInputDate(state.compareEnd);
-  if (!compareStart || !compareEnd) return [];
-
-  return state.rawRows
-    .map((row) => classifyRow(row, compareStart, compareEnd))
-    .filter((row) => isRowIncluded(row, compareStart, compareEnd));
-}
-
 function aggregateRows(rows) {
   const agg = rows.reduce(
     (acc, row) => {
       acc.sessions += toNumber(row.sessions) || 0;
-      acc.users += toNumber(row.users) || 0;
       acc.purchasers += toNumber(row.purchasers) || 0;
       acc.revenue += toNumber(row.revenue) || 0;
       return acc;
     },
-    { sessions: 0, users: 0, purchasers: 0, revenue: 0 }
+    { sessions: 0, purchasers: 0, revenue: 0 }
   );
   agg.aov = agg.purchasers ? agg.revenue / agg.purchasers : 0;
-  agg.cvr = agg.users ? agg.purchasers / agg.users : 0;
+  agg.cvr = agg.sessions ? agg.purchasers / agg.sessions : 0;
   return agg;
 }
 
-function renderPushTable() {
-  const thead = document.querySelector("#pushTable thead");
-  const tbody = document.querySelector("#pushTable tbody");
-  const context = document.getElementById("pushTableContext");
-  const pushOverview = document.getElementById("pushOverviewGrid");
+function renderCategoryComparison() {
+  const cardContainer = document.getElementById("categoryCardGrid");
+  const trendContainer = document.getElementById("categoryTrendGrid");
+  const context = document.getElementById("categoryContext");
 
   context.textContent =
-    `Current: ${state.currentStart} ~ ${state.currentEnd} · Push Category: ${pushCategoryLabelMap[state.pushCategoryFilter]} · Push Name Group: ${pushBucketLabelMap[state.pushBucketFilter]}`;
+    `Current: ${state.currentStart} ~ ${state.currentEnd} · Push Category Filter: ${pushCategoryLabelMap[state.pushCategoryFilter]}`;
 
-  const grouped = groupByPushName(state.filteredRows);
+  const inPeriodRows = state.filteredRows;
 
-  const currentAgg = aggregateRows(state.filteredRows);
-  const compareRows = getCompareRows();
-  const compareAgg = aggregateRows(compareRows);
+  const allGroups = [
+    { key: "automation", label: "Automation Push (自动化PUSH)", color: SERIES_COLORS.automation },
+    { key: "manual", label: "Manual Push (手动PUSH)", color: SERIES_COLORS.manual },
+  ];
+  const groups = state.pushCategoryFilter === "all"
+    ? allGroups
+    : allGroups.filter((g) => g.key === state.pushCategoryFilter);
 
-  if (!state.filteredRows.length) {
-    pushOverview.innerHTML = "";
-  } else {
-    pushOverview.innerHTML = overviewMetrics.map((metric) => {
-      const wow = buildWowObject(
-        currentAgg[metric.key],
-        compareAgg[metric.key],
-        metric.type,
-        metric.inverse
-      );
-      return `
-        <article class="metric-card">
-          <p class="metric-label">${escapeHtml(metric.label)}</p>
-          <p class="metric-value">${escapeHtml(formatValue(currentAgg[metric.key], metric.type))}</p>
-          <p class="metric-compare">Compare: ${escapeHtml(formatValue(compareAgg[metric.key], metric.type))}</p>
-          <div class="metric-wow ${wow.className}">
-            <span class="metric-wow-arrow">${escapeHtml(wow.arrow)}</span>
-            <span class="metric-wow-value">${escapeHtml(wow.pctOnlyLabel)}</span>
-          </div>
-        </article>
-      `;
-    }).join("");
-  }
-
-  renderRankingChart(document.getElementById("pushRankingChart"), grouped.slice(0, 10));
-
-  thead.innerHTML = `
-    <tr>
-      <th>Push Name</th>
-      <th>Push Category</th>
-      <th>Push Name Group</th>
-      <th>Resolved Push Date</th>
-      <th>Sessions</th>
-      <th>Users / UV</th>
-      <th>Purchasers</th>
-      <th>Revenue</th>
-      <th>AOV (客单价)</th>
-      <th>CVR (转化率)</th>
-    </tr>
-  `;
-
-  if (!grouped.length) {
-    tbody.innerHTML = '<tr><td class="empty-cell" colspan="10">No push rows match the current filters.</td></tr>';
+  if (!inPeriodRows.length) {
+    cardContainer.innerHTML = '<div class="empty-state">No app-push rows in the selected date range.</div>';
+    trendContainer.innerHTML = '<div class="chart-card empty-chart">No weekly trend data available.</div>';
     return;
   }
 
-  tbody.innerHTML = grouped.map((row) => {
-    const aov = (toNumber(row.purchasers) || 0) ? (toNumber(row.revenue) || 0) / (toNumber(row.purchasers) || 1) : 0;
-    const cvr = (toNumber(row.users) || 0) ? (toNumber(row.purchasers) || 0) / (toNumber(row.users) || 1) : 0;
+  cardContainer.innerHTML = groups.map((group) => {
+    const groupRows = inPeriodRows.filter((row) => row.pushCategory === group.key);
+    const agg = aggregateRows(groupRows);
+    const cards = overviewMetrics.map((metric) => `
+      <article class="metric-card">
+        <p class="metric-label">${escapeHtml(metric.label)}</p>
+        <p class="metric-value">${escapeHtml(formatValue(agg[metric.key], metric.type))}</p>
+      </article>
+    `).join("");
     return `
-    <tr>
-      <td>${escapeHtml(row.pushName)}</td>
-      <td>${renderPill(row.pushCategory, "category")}</td>
-      <td>${renderPill(row.pushBucket, "bucket")}</td>
-      <td>${escapeHtml(row.resolvedManualDate ? formatDateInput(row.resolvedManualDate) : "-")}</td>
-      <td>${escapeHtml(formatNumber(row.sessions))}</td>
-      <td>${escapeHtml(formatNumber(row.users))}</td>
-      <td>${escapeHtml(formatNumber(row.purchasers))}</td>
-      <td>${escapeHtml(formatCurrency(row.revenue))}</td>
-      <td>${escapeHtml(formatCurrency(aov))}</td>
-      <td>${escapeHtml(formatPercent(cvr))}</td>
-    </tr>
-  `}).join("");
+      <div class="category-block">
+        <div class="category-block-head">
+          <span class="category-swatch" style="background:${group.color}"></span>
+          <h3 class="category-block-title">${escapeHtml(group.label)}</h3>
+          <span class="category-block-meta">${formatNumber(groupRows.length)} rows</span>
+        </div>
+        <div class="overview-grid">${cards}</div>
+      </div>
+    `;
+  }).join("");
+
+  const allTimeRows = state.classifiedRows.filter((row) => {
+    if (row.pushBucket === "future" || row.pushBucket === "invalid") return false;
+    return matchesProductFilter(row);
+  });
+
+  const weekFrame = buildWeekFrame(allTimeRows);
+  if (!weekFrame.length) {
+    trendContainer.innerHTML = '<div class="chart-card empty-chart">No weekly trend data available.</div>';
+    return;
+  }
+
+  const seriesByGroup = groups.map((group) => ({
+    label: group.label,
+    color: group.color,
+    weekly: aggregateWeekly(weekFrame, allTimeRows.filter((row) => row.pushCategory === group.key)),
+  }));
+
+  const visibleWeeks = Math.min(weekFrame.length, 4);
+  const sliceStart = weekFrame.length - visibleWeeks;
+  const xLabels = weekFrame.slice(sliceStart).map((w) => w.label);
+
+  trendContainer.innerHTML = trendMetrics.map((metric) => {
+    const series = seriesByGroup.map((group) => ({
+      label: group.label,
+      color: group.color,
+      points: group.weekly.slice(sliceStart).map((w, i) => ({ label: xLabels[i], value: w[metric.key] })),
+    }));
+    return `
+      <div class="chart-card">
+        <h3>${escapeHtml(metric.label)}</h3>
+        <p class="chart-caption">Sunday to Saturday · last ${visibleWeeks} week(s).</p>
+        <div class="legend-row">${series.map((s) => `<span class="legend-item"><span class="legend-swatch" style="background:${s.color}"></span>${escapeHtml(s.label)}</span>`).join("")}</div>
+        <div class="line-chart">${renderMultiLineSvg(series, metric)}</div>
+      </div>
+    `;
+  }).join("");
 }
 
-function groupByPushName(rows) {
-  const map = new Map();
+function buildWeekFrame(rows) {
+  if (!rows.length) return [];
+  const dates = rows.map((row) => row.dateObj).filter(Boolean).sort((a, b) => a - b);
+  const firstWeekStart = getSunday(dates[0]);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const lastCompleteSaturday = getPreviousOrSameSaturday(today);
+  const dataLastSaturday = getSaturday(dates[dates.length - 1]);
+  const lastWeekEnd = lastCompleteSaturday < dataLastSaturday ? lastCompleteSaturday : dataLastSaturday;
 
+  const frame = [];
+  const cursor = new Date(firstWeekStart);
+  while (cursor <= lastWeekEnd) {
+    const weekStart = new Date(cursor);
+    const weekEnd = addDays(weekStart, 6);
+    frame.push({
+      key: formatDateInput(weekStart),
+      weekStart,
+      weekEnd,
+      label: `${formatMonthDay(weekStart)}-${formatMonthDay(weekEnd)}`,
+    });
+    cursor.setDate(cursor.getDate() + 7);
+  }
+  return frame;
+}
+
+function aggregateWeekly(frame, rows) {
+  const indexByKey = new Map(frame.map((w, i) => [w.key, i]));
+  const buckets = frame.map((w) => ({
+    label: w.label,
+    weekStart: w.weekStart,
+    weekEnd: w.weekEnd,
+    sessions: 0,
+    purchasers: 0,
+    revenue: 0,
+  }));
   rows.forEach((row) => {
-    const key = row.pushName;
-    if (!map.has(key)) {
-      map.set(key, {
-        pushName: row.pushName,
-        pushCategory: row.pushCategory,
-        pushBucket: row.pushBucket,
-        resolvedManualDate: row.resolvedManualDate,
-        sessions: 0,
-        users: 0,
-        purchasers: 0,
-        revenue: 0,
-      });
-    }
-
-    const item = map.get(key);
-    item.sessions += toNumber(row.sessions) || 0;
-    item.users += toNumber(row.users) || 0;
-    item.purchasers += toNumber(row.purchasers) || 0;
-    item.revenue += toNumber(row.revenue) || 0;
+    const sunday = getSunday(row.dateObj);
+    const key = formatDateInput(sunday);
+    const idx = indexByKey.get(key);
+    if (idx === undefined) return;
+    const b = buckets[idx];
+    b.sessions += toNumber(row.sessions) || 0;
+    b.purchasers += toNumber(row.purchasers) || 0;
+    b.revenue += toNumber(row.revenue) || 0;
   });
-
-  return [...map.values()].sort((a, b) => {
-    const revenueGap = (toNumber(b.revenue) || 0) - (toNumber(a.revenue) || 0);
-    if (revenueGap !== 0) return revenueGap;
-    return (toNumber(b.sessions) || 0) - (toNumber(a.sessions) || 0);
-  });
+  return buckets;
 }
 
-function renderPill(value, type) {
-  const labelMap = type === "category" ? pushCategoryLabelMap : pushBucketLabelMap;
-  const className = `push-type-pill ${type === "category" ? `pill-category-${value}` : `pill-bucket-${value}`}`;
-  return `<span class="${className}">${escapeHtml(labelMap[value] || value)}</span>`;
+function renderProductSection() {
+  const tableBody = document.querySelector("#productTable tbody");
+  const tableHead = document.querySelector("#productTable thead");
+  const rankingContainer = document.getElementById("productRankingChart");
+  const context = document.getElementById("productContext");
+
+  const rolled = rollupByProduct(state.filteredRows);
+  const search = state.productSearch;
+  const visible = search ? rolled.filter((p) => p.productTitle.toLowerCase().includes(search)) : rolled;
+
+  context.textContent = `Current: ${state.currentStart} ~ ${state.currentEnd} · ${visible.length} product titles in scope (per-product totals may exceed grand totals because revenue / sessions are not split across multi-product transactions).`;
+
+  tableHead.innerHTML = `
+    <tr>
+      <th>Product Title</th>
+      <th>Sessions</th>
+      <th>Purchasers</th>
+      <th>Revenue</th>
+      <th>AOV</th>
+      <th>CVR (Purchasers / Sessions)</th>
+    </tr>
+  `;
+
+  if (!visible.length) {
+    tableBody.innerHTML = '<tr><td class="empty-cell" colspan="6">No products match the current filters.</td></tr>';
+    rankingContainer.classList.add("empty-chart");
+    rankingContainer.innerHTML = "No product revenue available.";
+    return;
+  }
+
+  tableBody.innerHTML = visible.map((p) => `
+    <tr>
+      <td>${escapeHtml(p.productTitle)}</td>
+      <td>${escapeHtml(formatNumber(p.sessions))}</td>
+      <td>${escapeHtml(formatNumber(p.purchasers))}</td>
+      <td>${escapeHtml(formatCurrency(p.revenue))}</td>
+      <td>${escapeHtml(formatCurrency(p.aov))}</td>
+      <td>${escapeHtml(formatPercent(p.cvr))}</td>
+    </tr>
+  `).join("");
+
+  const top = visible.slice().sort((a, b) => b.revenue - a.revenue).slice(0, 10);
+  renderRankingChart(rankingContainer, top.map((p) => ({ pushName: p.productTitle, revenue: p.revenue })));
+}
+
+function rollupByProduct(rows) {
+  const map = new Map();
+  rows.forEach((row) => {
+    const titles = row.productTitles.length ? row.productTitles : ["Unknown"];
+    titles.forEach((title) => {
+      if (!map.has(title)) {
+        map.set(title, { productTitle: title, sessions: 0, purchasers: 0, revenue: 0 });
+      }
+      const item = map.get(title);
+      item.sessions += toNumber(row.sessions) || 0;
+      item.revenue += toNumber(row.revenue) || 0;
+      const orders = row.productOrdersByTitle.get(title);
+      if (typeof orders === "number" && Number.isFinite(orders)) {
+        item.purchasers += orders;
+      } else if (title === "Unknown") {
+        item.purchasers += toNumber(row.purchasers) || 0;
+      }
+    });
+  });
+  return [...map.values()]
+    .map((p) => ({
+      ...p,
+      aov: p.purchasers ? p.revenue / p.purchasers : 0,
+      cvr: p.sessions ? p.purchasers / p.sessions : 0,
+    }))
+    .sort((a, b) => b.revenue - a.revenue);
 }
 
 function renderContributionCharts() {
   const grouped = groupByPushBucket(state.filteredRows);
-
-  renderBarChart(
-    document.getElementById("sessionsShareChart"),
-    buildShareData(grouped, "sessions")
-  );
-
-  renderBarChart(
-    document.getElementById("revenueShareChart"),
-    buildShareData(grouped, "revenue")
-  );
+  renderBarChart(document.getElementById("sessionsShareChart"), buildShareData(grouped, "sessions"));
+  renderBarChart(document.getElementById("revenueShareChart"), buildShareData(grouped, "revenue"));
 }
 
 function groupByPushBucket(rows) {
@@ -570,13 +768,11 @@ function groupByPushBucket(rows) {
     past: { label: "Past Push", sessions: 0, revenue: 0 },
     automation: { label: "Automation Push", sessions: 0, revenue: 0 },
   };
-
   rows.forEach((row) => {
     if (!base[row.pushBucket]) return;
     base[row.pushBucket].sessions += toNumber(row.sessions) || 0;
     base[row.pushBucket].revenue += toNumber(row.revenue) || 0;
   });
-
   return Object.values(base).filter((row) => row.sessions !== 0 || row.revenue !== 0);
 }
 
@@ -594,7 +790,6 @@ function renderBarChart(container, data) {
     container.innerHTML = "No data available for the current filter.";
     return;
   }
-
   container.classList.remove("empty-chart");
   container.innerHTML = data.map((item) => `
     <div class="bar-row chart-tip" data-label="${escapeHtml(item.label)}" data-value="${escapeHtml(formatPercent(item.share))}">
@@ -608,7 +803,7 @@ function renderBarChart(container, data) {
 function renderRankingChart(container, items) {
   if (!items.length) {
     container.classList.add("empty-chart");
-    container.innerHTML = "No push data for ranking.";
+    container.innerHTML = "No data for ranking.";
     return;
   }
   const maxRevenue = Math.max(...items.map((r) => toNumber(r.revenue) || 0), 0.01);
@@ -628,25 +823,21 @@ function renderRankingChart(container, items) {
 function renderTrendCharts() {
   const container = document.getElementById("trendGrid");
   const filteredAllTimeRows = getAllTimeRowsForTrend();
-  const allWeeks = buildWeeklySeries(filteredAllTimeRows);
-  const weeklySeries = allWeeks.slice(-4);
+  const frame = buildWeekFrame(filteredAllTimeRows);
+  const weekly = aggregateWeekly(frame, filteredAllTimeRows);
+  const visibleWeeks = Math.min(weekly.length, 4);
+  const sliceStart = weekly.length - visibleWeeks;
+  const weeklySeries = weekly.slice(sliceStart);
 
   if (!weeklySeries.length) {
     container.innerHTML = '<div class="chart-card empty-chart">No weekly trend data available for the current filters.</div>';
     return;
   }
 
-  const metrics = [
-    { label: "Weekly Purchasers", key: "purchasers", type: "number" },
-    { label: "Weekly Revenue", key: "revenue", type: "currency" },
-    { label: "Weekly Sessions", key: "sessions", type: "number" },
-    { label: "Weekly UV", key: "users", type: "number" },
-  ];
-
-  container.innerHTML = metrics.map((metric) => `
+  container.innerHTML = trendMetrics.map((metric) => `
     <div class="chart-card">
       <h3>${escapeHtml(metric.label)}</h3>
-      <p class="chart-caption">Grouped by Sunday to Saturday across all available weeks.</p>
+      <p class="chart-caption">Grouped by Sunday to Saturday across the latest ${visibleWeeks} week(s).</p>
       <div class="line-chart">${renderLineSvg(weeklySeries, metric)}</div>
     </div>
   `).join("");
@@ -659,93 +850,50 @@ function getAllTimeRowsForTrend() {
   });
 }
 
-function buildWeeklySeries(rows) {
-  if (!rows.length) return [];
-
-  const sortedDates = rows
-    .map((row) => row.dateObj)
-    .filter(Boolean)
-    .sort((a, b) => a - b);
-
-  const firstWeekStart = getSunday(sortedDates[0]);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const lastCompleteSaturday = getPreviousOrSameSaturday(today);
-  const dataLastSaturday = getSaturday(sortedDates[sortedDates.length - 1]);
-  const lastWeekEnd = lastCompleteSaturday < dataLastSaturday
-    ? lastCompleteSaturday
-    : dataLastSaturday;
-  const weekMap = new Map();
-
-  const cursor = new Date(firstWeekStart);
-  while (cursor <= lastWeekEnd) {
-    const weekStart = new Date(cursor);
-    const weekEnd = addDays(weekStart, 6);
-    const key = formatDateInput(weekStart);
-    weekMap.set(key, {
-      label: `${formatMonthDay(weekStart)}-${formatMonthDay(weekEnd)}`,
-      weekStart,
-      weekEnd,
-      sessions: 0,
-      users: 0,
-      purchasers: 0,
-      revenue: 0,
-    });
-    cursor.setDate(cursor.getDate() + 7);
-  }
-
-  rows.forEach((row) => {
-    const weekStart = getSunday(row.dateObj);
-    const key = formatDateInput(weekStart);
-    if (!weekMap.has(key)) return;
-    const item = weekMap.get(key);
-    item.sessions += toNumber(row.sessions) || 0;
-    item.users += toNumber(row.users) || 0;
-    item.purchasers += toNumber(row.purchasers) || 0;
-    item.revenue += toNumber(row.revenue) || 0;
-  });
-
-  return [...weekMap.values()];
+function renderLineSvg(series, metric) {
+  const points = series.map((item) => ({ label: item.label, value: item[metric.key] }));
+  if (!points.length) return '<div class="empty-chart">No data available.</div>';
+  return renderMultiLineSvg([{ label: metric.label, color: SERIES_COLORS.automation, points }], metric);
 }
 
-function renderLineSvg(series, metric) {
-  const points = series.map((item) => ({
-    label: item.label,
-    value: item[metric.key],
-  }));
+function renderMultiLineSvg(seriesList, metric) {
+  const seriesWithData = seriesList.filter((s) => s.points && s.points.length);
+  if (!seriesWithData.length) return '<div class="empty-chart">No data available.</div>';
 
-  if (!points.length) return '<div class="empty-chart">No data available.</div>';
-
+  const length = seriesWithData[0].points.length;
   const width = 820;
   const height = 260;
   const padding = { top: 20, right: 60, bottom: 52, left: 58 };
   const innerWidth = width - padding.left - padding.right;
   const innerHeight = height - padding.top - padding.bottom;
-  const maxValue = Math.max(...points.map((point) => toNumber(point.value) || 0), 0.01);
-  const tickIndexes = buildTickIndexes(points.length, 8);
+  const allValues = seriesWithData.flatMap((s) => s.points.map((p) => toNumber(p.value) || 0));
+  const maxValue = Math.max(...allValues, 0.01);
+  const tickIndexes = buildTickIndexes(length, 8);
 
   const scaleX = (index) =>
-    padding.left + (points.length === 1 ? innerWidth / 2 : (index / (points.length - 1)) * innerWidth);
+    padding.left + (length === 1 ? innerWidth / 2 : (index / (length - 1)) * innerWidth);
   const scaleY = (value) =>
     padding.top + innerHeight - ((toNumber(value) || 0) / maxValue) * innerHeight;
-
-  const path = points
-    .map((point, index) => `${index === 0 ? "M" : "L"}${scaleX(index)} ${scaleY(point.value)}`)
-    .join(" ");
 
   const gridLines = [0.25, 0.5, 0.75, 1].map((factor) => {
     const y = padding.top + innerHeight - innerHeight * factor;
     return `<line class="grid-line" x1="${padding.left}" y1="${y}" x2="${padding.left + innerWidth}" y2="${y}"></line>`;
   }).join("");
 
-  const dots = points.map((point, index) => {
-    const x = scaleX(index);
-    const y = scaleY(point.value);
-    return `<g class="chart-tip" data-label="${escapeHtml(point.label)}" data-value="${escapeHtml(formatValue(point.value, metric.type))}"><circle cx="${x}" cy="${y}" r="16" fill="transparent"/><circle class="line-dot" cx="${x}" cy="${y}" r="4"/></g>`;
+  const seriesSvg = seriesWithData.map((s) => {
+    const path = s.points
+      .map((point, index) => `${index === 0 ? "M" : "L"}${scaleX(index)} ${scaleY(point.value)}`)
+      .join(" ");
+    const dots = s.points.map((point, index) => {
+      const x = scaleX(index);
+      const y = scaleY(point.value);
+      return `<g class="chart-tip" data-label="${escapeHtml(`${s.label} · ${point.label}`)}" data-value="${escapeHtml(formatValue(point.value, metric.type))}"><circle cx="${x}" cy="${y}" r="16" fill="transparent"/><circle class="line-dot" cx="${x}" cy="${y}" r="4" style="fill:${s.color}"/></g>`;
+    }).join("");
+    return `<path class="line-path" d="${path}" style="stroke:${s.color}"></path>${dots}`;
   }).join("");
 
   const xTicks = tickIndexes.map((index) =>
-    `<text class="tick-label" x="${scaleX(index)}" y="${height - 18}" text-anchor="middle">${escapeHtml(points[index].label)}</text>`
+    `<text class="tick-label" x="${scaleX(index)}" y="${height - 18}" text-anchor="middle">${escapeHtml(seriesWithData[0].points[index].label)}</text>`
   ).join("");
 
   const yTopLabel = `<text class="tick-label" x="${padding.left}" y="${padding.top - 4}" text-anchor="start">${escapeHtml(formatValue(maxValue, metric.type))}</text>`;
@@ -756,8 +904,7 @@ function renderLineSvg(series, metric) {
       <line class="grid-line" x1="${padding.left}" y1="${padding.top + innerHeight}" x2="${padding.left + innerWidth}" y2="${padding.top + innerHeight}"></line>
       <line class="grid-line" x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${padding.top + innerHeight}"></line>
       ${yTopLabel}
-      <path class="line-path" d="${path}"></path>
-      ${dots}
+      ${seriesSvg}
       ${xTicks}
     </svg>
   `;
@@ -783,11 +930,10 @@ function renderDayOfWeekAnalysis() {
     return;
   }
 
-  const buckets = Array.from({ length: 7 }, () => ({ sessions: 0, users: 0, purchasers: 0, revenue: 0 }));
+  const buckets = Array.from({ length: 7 }, () => ({ sessions: 0, purchasers: 0, revenue: 0 }));
   state.filteredRows.forEach((row) => {
     const d = row.dateObj.getDay();
     buckets[d].sessions += toNumber(row.sessions) || 0;
-    buckets[d].users += toNumber(row.users) || 0;
     buckets[d].purchasers += toNumber(row.purchasers) || 0;
     buckets[d].revenue += toNumber(row.revenue) || 0;
   });
@@ -796,14 +942,14 @@ function renderDayOfWeekAnalysis() {
 
   container.innerHTML = buckets.map((b, i) => {
     const aov = b.purchasers ? b.revenue / b.purchasers : 0;
-    const cvr = b.users ? b.purchasers / b.users : 0;
+    const cvr = b.sessions ? b.purchasers / b.sessions : 0;
     const highlight = i === bestDay ? " dow-best" : "";
     return `
       <article class="metric-card${highlight}">
         <p class="metric-label">${dayNames[i]}</p>
         <p class="metric-value">${escapeHtml(formatCurrency(b.revenue))}</p>
-        <p class="metric-compare">${escapeHtml(formatNumber(b.sessions))} sessions · ${escapeHtml(formatNumber(b.users))} UV</p>
-        <p class="metric-compare">${escapeHtml(formatNumber(b.purchasers))} purch · AOV ${escapeHtml(formatCurrency(aov))} · CVR ${escapeHtml(formatPercent(cvr))}</p>
+        <p class="metric-compare">${escapeHtml(formatNumber(b.sessions))} sessions · ${escapeHtml(formatNumber(b.purchasers))} purch</p>
+        <p class="metric-compare">AOV ${escapeHtml(formatCurrency(aov))} · CVR ${escapeHtml(formatPercent(cvr))}</p>
       </article>
     `;
   }).join("");
@@ -811,7 +957,7 @@ function renderDayOfWeekAnalysis() {
 
 function renderAutomationWeeklyDetail() {
   const container = document.getElementById("automationWeeklyDetail");
-  const autoRows = state.classifiedRows.filter((row) => row.pushCategory === "automation");
+  const autoRows = state.classifiedRows.filter((row) => row.pushCategory === "automation" && matchesProductFilter(row));
 
   if (!autoRows.length) {
     container.innerHTML = '<div class="empty-state">No automation push data available.</div>';
@@ -820,11 +966,7 @@ function renderAutomationWeeklyDetail() {
 
   const pushNames = [...new Set(autoRows.map((r) => r.pushName))].sort();
 
-  const sortedDates = autoRows
-    .map((r) => r.dateObj)
-    .filter(Boolean)
-    .sort((a, b) => a - b);
-
+  const sortedDates = autoRows.map((r) => r.dateObj).filter(Boolean).sort((a, b) => a - b);
   const firstWeekStart = getSunday(sortedDates[0]);
   const lastWeekEnd = getSaturday(sortedDates[sortedDates.length - 1]);
 
@@ -844,13 +986,10 @@ function renderAutomationWeeklyDetail() {
     const pushRows = autoRows.filter((r) => r.pushName === pushName);
 
     const weekData = weekKeys.map((week) => {
-      const weekRows = pushRows.filter(
-        (r) => r.dateObj >= week.start && r.dateObj <= week.end
-      );
+      const weekRows = pushRows.filter((r) => r.dateObj >= week.start && r.dateObj <= week.end);
       return {
         label: week.label,
         sessions: weekRows.reduce((s, r) => s + (toNumber(r.sessions) || 0), 0),
-        users: weekRows.reduce((s, r) => s + (toNumber(r.users) || 0), 0),
         purchasers: weekRows.reduce((s, r) => s + (toNumber(r.purchasers) || 0), 0),
         revenue: weekRows.reduce((s, r) => s + (toNumber(r.revenue) || 0), 0),
       };
@@ -863,7 +1002,7 @@ function renderAutomationWeeklyDetail() {
     const tableRows = weekData.map((week, i) => {
       const prev = i > 0 ? weekData[i - 1] : null;
       const aov = week.purchasers ? week.revenue / week.purchasers : 0;
-      const cvr = week.users ? week.purchasers / week.users : 0;
+      const cvr = week.sessions ? week.purchasers / week.sessions : 0;
       const rowCls = hasData && i === bestIdx ? ' class="week-best"' : hasData && i === worstIdx && bestIdx !== worstIdx ? ' class="week-worst"' : "";
 
       const wowCell = (cur, pri) => {
@@ -877,8 +1016,6 @@ function renderAutomationWeeklyDetail() {
         <td>${escapeHtml(week.label)}</td>
         <td>${escapeHtml(formatNumber(week.sessions))}</td>
         ${wowCell(week.sessions, prev?.sessions)}
-        <td>${escapeHtml(formatNumber(week.users))}</td>
-        ${wowCell(week.users, prev?.users)}
         <td>${escapeHtml(formatNumber(week.purchasers))}</td>
         ${wowCell(week.purchasers, prev?.purchasers)}
         <td>${escapeHtml(formatCurrency(week.revenue))}</td>
@@ -889,16 +1026,15 @@ function renderAutomationWeeklyDetail() {
     }).join("");
 
     const totals = weekData.reduce((t, w) => {
-      t.sessions += w.sessions; t.users += w.users;
+      t.sessions += w.sessions;
       t.purchasers += w.purchasers; t.revenue += w.revenue;
       return t;
-    }, { sessions: 0, users: 0, purchasers: 0, revenue: 0 });
+    }, { sessions: 0, purchasers: 0, revenue: 0 });
     const totalAov = totals.purchasers ? totals.revenue / totals.purchasers : 0;
-    const totalCvr = totals.users ? totals.purchasers / totals.users : 0;
+    const totalCvr = totals.sessions ? totals.purchasers / totals.sessions : 0;
     const summaryRow = `<tr class="summary-row">
       <td>Total</td>
       <td>${escapeHtml(formatNumber(totals.sessions))}</td><td></td>
-      <td>${escapeHtml(formatNumber(totals.users))}</td><td></td>
       <td>${escapeHtml(formatNumber(totals.purchasers))}</td><td></td>
       <td>${escapeHtml(formatCurrency(totals.revenue))}</td><td></td>
       <td>${escapeHtml(formatCurrency(totalAov))}</td>
@@ -914,7 +1050,6 @@ function renderAutomationWeeklyDetail() {
               <tr>
                 <th>Week</th>
                 <th>Sessions</th><th>WoW</th>
-                <th>Users</th><th>WoW</th>
                 <th>Purchasers</th><th>WoW</th>
                 <th>Revenue</th><th>WoW</th>
                 <th>AOV</th>
@@ -949,7 +1084,8 @@ function renderExcludedTable() {
     return;
   }
 
-  tbody.innerHTML = state.excludedRows.map((row) => `
+  const sample = state.excludedRows.slice(0, 200);
+  tbody.innerHTML = sample.map((row) => `
     <tr>
       <td>${escapeHtml(row.date)}</td>
       <td>${escapeHtml(row.pushName)}</td>
@@ -958,7 +1094,13 @@ function renderExcludedTable() {
       <td>${escapeHtml(row.resolvedManualDate ? formatDateInput(row.resolvedManualDate) : "-")}</td>
       <td>${escapeHtml(row.pushBucket === "future" ? "Manual push name date is later than the selected current period." : "Manual push name could not be parsed into a valid month.day date.")}</td>
     </tr>
-  `).join("");
+  `).join("") + (state.excludedRows.length > sample.length ? `<tr><td class="empty-cell" colspan="6">… ${state.excludedRows.length - sample.length} more excluded rows truncated for display.</td></tr>` : "");
+}
+
+function renderPill(value, type) {
+  const labelMap = type === "category" ? pushCategoryLabelMap : pushBucketLabelMap;
+  const className = `push-type-pill ${type === "category" ? `pill-category-${value}` : `pill-bucket-${value}`}`;
+  return `<span class="${className}">${escapeHtml(labelMap[value] || value)}</span>`;
 }
 
 function buildWowObject(currentValue, priorValue, type, inverse) {
@@ -1172,8 +1314,16 @@ function formatSignedPercent(value) {
 
 function renderEmptyStates(message) {
   document.getElementById("overviewGrid").innerHTML = `<div class="empty-state">${escapeHtml(message)}</div>`;
-  document.querySelector("#pushTable thead").innerHTML = "";
-  document.querySelector("#pushTable tbody").innerHTML = `<tr><td class="empty-cell">${escapeHtml(message)}</td></tr>`;
+  const catCard = document.getElementById("categoryCardGrid");
+  if (catCard) catCard.innerHTML = `<div class="empty-state">${escapeHtml(message)}</div>`;
+  const catTrend = document.getElementById("categoryTrendGrid");
+  if (catTrend) catTrend.innerHTML = `<div class="chart-card empty-chart">${escapeHtml(message)}</div>`;
+  const productHead = document.querySelector("#productTable thead");
+  if (productHead) productHead.innerHTML = "";
+  const productBody = document.querySelector("#productTable tbody");
+  if (productBody) productBody.innerHTML = `<tr><td class="empty-cell">${escapeHtml(message)}</td></tr>`;
+  const productRanking = document.getElementById("productRankingChart");
+  if (productRanking) productRanking.innerHTML = escapeHtml(message);
   document.getElementById("sessionsShareChart").innerHTML = message;
   document.getElementById("revenueShareChart").innerHTML = message;
   document.getElementById("trendGrid").innerHTML = `<div class="chart-card empty-chart">${escapeHtml(message)}</div>`;

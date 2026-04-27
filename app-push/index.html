@@ -17,12 +17,13 @@
   <nav class="section-nav">
     <a href="#sec-01">Filters</a>
     <a href="#sec-02">Overview</a>
-    <a href="#sec-03">Performance</a>
-    <a href="#sec-04">Contribution</a>
-    <a href="#sec-05">Trends</a>
-    <a href="#sec-06">Day-of-Week</a>
-    <a href="#sec-07">Automation</a>
-    <a href="#sec-08">Notes</a>
+    <a href="#sec-03">Auto vs Manual</a>
+    <a href="#sec-04">Products</a>
+    <a href="#sec-05">Contribution</a>
+    <a href="#sec-06">Trends</a>
+    <a href="#sec-07">Day-of-Week</a>
+    <a href="#sec-08">Automation</a>
+    <a href="#sec-09">Notes</a>
   </nav>
   <div class="page-shell">
     <header class="dashboard-header">
@@ -68,9 +69,26 @@
             </label>
           </div>
 
+          <div class="filter-grid product-filter-grid">
+            <label class="control">
+              <span>Push Category</span>
+              <select id="pushCategoryFilter">
+                <option value="all">All</option>
+                <option value="manual">Manual Push (手动PUSH)</option>
+                <option value="automation">Automation Push (自动化PUSH)</option>
+              </select>
+            </label>
+
+            <label class="control control-product">
+              <span>Product Title (multi-select)</span>
+              <select id="productTitleFilter" multiple size="4"></select>
+            </label>
+          </div>
+
           <div class="filter-actions">
             <button id="applyDateRange" class="secondary-button" type="button">Apply Filters</button>
             <button id="useLatestWeek" class="secondary-button" type="button">Auto Compare Period</button>
+            <button id="productTitleClear" class="secondary-button" type="button">Clear Product Filter</button>
           </div>
 
           <p id="fileMeta" class="section-note">Loading app-push repository data...</p>
@@ -96,64 +114,17 @@
         <div class="section-head">
           <div>
             <p class="section-kicker">Section 03</p>
-            <h2 class="section-title">Push Performance</h2>
-            <p id="pushTableContext" class="section-sub">
-              Push-level performance based on selected period and push classification.
-            </p>
+            <h2 class="section-title">Automation Push vs Manual Push</h2>
+            <p id="categoryContext" class="section-sub">Source / medium dimension grouped into Automation Push (自动化PUSH) vs Manual Push (手动PUSH), with Sunday-to-Saturday weekly trend lines.</p>
           </div>
         </div>
-
         <div class="section-body">
-          <div class="section-control-row four-up-controls">
-            <label class="control compact-control">
-              <span>Push Category</span>
-              <select id="pushCategoryFilter">
-                <option value="all">All</option>
-                <option value="manual">Manual Push</option>
-                <option value="automation">Automation Push</option>
-              </select>
-            </label>
-
-            <label class="control compact-control">
-              <span>Push Name Group</span>
-              <select id="pushBucketFilter">
-                <option value="all">All</option>
-                <option value="current">Current Push</option>
-                <option value="past">Past Push</option>
-                <option value="automation">Automation Push</option>
-              </select>
-            </label>
-
-            <label class="control compact-control">
-              <span>Search Push</span>
-              <input id="pushSearch" type="search" placeholder="Search push name" />
-            </label>
-
-            <label class="control compact-control">
-              <span>Zero Rows</span>
-              <select id="zeroRowFilter">
-                <option value="show">Show All Rows</option>
-                <option value="hide">Hide Zero Rows</option>
-              </select>
-            </label>
+          <div id="categoryCardGrid" class="category-card-grid">
+            <div class="empty-state">Loading category breakdown...</div>
           </div>
 
-          <div id="pushOverviewGrid" class="overview-grid push-overview-grid"></div>
-
-          <div class="chart-card" id="pushRankingCard">
-            <h3>Top 10 Push by Revenue</h3>
-            <div id="pushRankingChart" class="bar-chart empty-chart"></div>
-          </div>
-
-          <div class="table-wrap">
-            <table id="pushTable">
-              <thead></thead>
-              <tbody>
-                <tr>
-                  <td class="empty-cell">Loading app-push table...</td>
-                </tr>
-              </tbody>
-            </table>
+          <div id="categoryTrendGrid" class="chart-grid trends-grid four-up-trends">
+            <div class="chart-card empty-chart">Loading category weekly trend charts...</div>
           </div>
         </div>
       </section>
@@ -162,6 +133,40 @@
         <div class="section-head">
           <div>
             <p class="section-kicker">Section 04</p>
+            <h2 class="section-title">Product Performance</h2>
+            <p id="productContext" class="section-sub">Per-product analytics joined via Transaction ID.</p>
+          </div>
+        </div>
+        <div class="section-body">
+          <div class="section-control-row">
+            <label class="control compact-control">
+              <span>Search Product Title</span>
+              <input id="productSearch" type="search" placeholder="Filter by product title" />
+            </label>
+          </div>
+
+          <div class="chart-card" id="productRankingCard">
+            <h3>Top 10 Products by Revenue</h3>
+            <div id="productRankingChart" class="bar-chart empty-chart"></div>
+          </div>
+
+          <div class="table-wrap">
+            <table id="productTable">
+              <thead></thead>
+              <tbody>
+                <tr>
+                  <td class="empty-cell">Loading product table...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="sec-05" class="section">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Section 05</p>
             <h2 class="section-title">Contribution Analysis</h2>
             <p class="section-sub">Compare current push, past push and automation push contribution to traffic and revenue.</p>
           </div>
@@ -180,12 +185,12 @@
         </div>
       </section>
 
-      <section id="sec-05" class="section">
+      <section id="sec-06" class="section">
         <div class="section-head">
           <div>
-            <p class="section-kicker">Section 05</p>
+            <p class="section-kicker">Section 06</p>
             <h2 class="section-title">Weekly Trends</h2>
-            <p class="section-sub">All-time weekly trend by Sunday to Saturday for purchasers, revenue, sessions and UV.</p>
+            <p class="section-sub">All-time weekly trend by Sunday to Saturday for purchasers, revenue and sessions.</p>
           </div>
         </div>
         <div class="section-body">
@@ -195,10 +200,10 @@
         </div>
       </section>
 
-      <section id="sec-06" class="section">
+      <section id="sec-07" class="section">
         <div class="section-head">
           <div>
-            <p class="section-kicker">Section 06</p>
+            <p class="section-kicker">Section 07</p>
             <h2 class="section-title">Day-of-Week Performance</h2>
             <p class="section-sub">Aggregated metrics by day of week to optimize push timing (based on current period and filters).</p>
           </div>
@@ -210,10 +215,10 @@
         </div>
       </section>
 
-      <section id="sec-07" class="section">
+      <section id="sec-08" class="section">
         <div class="section-head">
           <div>
-            <p class="section-kicker">Section 07</p>
+            <p class="section-kicker">Section 08</p>
             <h2 class="section-title">Automation Push Weekly Detail</h2>
             <p class="section-sub">Week-by-week breakdown for each automation push (Sunday to Saturday) with period-over-period change.</p>
           </div>
@@ -225,22 +230,24 @@
         </div>
       </section>
 
-      <section id="sec-08" class="section">
+      <section id="sec-09" class="section">
         <div class="section-head">
           <div>
-            <p class="section-kicker">Section 08</p>
+            <p class="section-kicker">Section 09</p>
             <h2 class="section-title">Notes / Validation</h2>
-            <p class="section-sub">Push name parsing rules and excluded rows.</p>
+            <p class="section-sub">Data model, join behaviour and excluded rows.</p>
           </div>
         </div>
         <div class="section-body">
           <div class="note-box">
             <ul>
-              <li><strong>Manual Push</strong>: push or ppush prefix.</li>
-              <li><strong>Automation Push</strong>: any push name not starting with push / ppush.</li>
-              <li><strong>Current Push</strong>: manual push name date falls inside the selected current period.</li>
-              <li><strong>Past Push</strong>: manual push name date is earlier than the selected current period start.</li>
-              <li><strong>Future / Invalid</strong>: manual push name date is later than the selected current period end, or its name cannot be parsed into a valid month.day.</li>
+              <li><strong>Auto / Manual classification</strong>: derived directly from the <code>Source / medium</code> column. <code>automation / app-push</code> → Automation Push; <code>manual / app-push</code> → Manual Push.</li>
+              <li><strong>Push name</strong>: shown from <code>Manual term</code> (falls back to <code>Session manual term</code> when Manual term is empty / <code>(not set)</code>).</li>
+              <li><strong>Purchasers</strong>: each row with a real <code>Transaction ID</code> = 1 purchaser. Rows with <code>(not set)</code> Transaction ID contribute Sessions only.</li>
+              <li><strong>CVR</strong> = Total Purchasers / Total Sessions (Total users column was removed from the source table).</li>
+              <li><strong>Current Push / Past Push / Future / Invalid</strong>: derived from manual-term <code>pushMMDD</code> patterns relative to the current period.</li>
+              <li><strong>Product join</strong>: main table joins to <code>orders_with_date_jan_apr_2026.csv</code> on <code>Transaction ID</code>. Multiple Product titles for the same transaction are concatenated as <code>A | B | C</code>. Missing or unmatched transaction IDs render as <code>Unknown</code>.</li>
+              <li><strong>Per-product attribution</strong>: Purchasers per product = count of <code>(Transaction × Product title)</code> rows in table B (one row = one product unit). Revenue / Sessions are <strong>not split</strong> across multi-product transactions; each product receives the row's full value, so per-product totals can exceed grand totals by design.</li>
             </ul>
           </div>
 
