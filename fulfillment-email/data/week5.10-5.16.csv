@@ -1,0 +1,11 @@
+﻿Flow,Trigger,Emails sent,Emails delivered,Delivery rate,Emails opened,Open rate,Emails clicked,Click rate,Bounced emails,Bounce rate,Unsubscribed,Unsubscribe rate,Spam reports,Spam complaint rate,Email attributed orders,Email attributed revenue
+Summary,-,"12,192","12,170",99.82%,"5,372",44.14%,"1,347",11.07%,28,0.23%,9,0.26%,0,0.00%,14,$955.35 
+When shipment updates to in transit,In transit,"6,208","6,205",99.95%,"2,751",44.34%,882,14.21%,5,0.08%,1,0.04%,0,0.00%,,
+comment & nps - TEST,Delivered,"1,774","1,774",100.00%,770,43.40%,26,1.47%,0,0.00%,7,0.46%,0,0.00%,,
+Delivered - TEST,Delivered,"1,439","1,438",99.93%,591,41.10%,130,9.04%,1,0.07%,0,0.00%,0,0.00%,,
+Delivery arriving soon,Delivery arriving soon,"1,350","1,350",100.00%,606,44.89%,166,12.30%,0,0.00%,1,0.08%,0,0.00%,,
+Order placed,Order placed,"1,198","1,180",98.50%,564,47.80%,98,8.31%,22,1.84%,0,0.00%,0,0.00%,,
+Split order shipments updated (digest),Split order shipments updated (digest),131,131,100.00%,56,42.75%,22,16.79%,0,0.00%,0,0.00%,0,0.00%,,
+Order canceled,Order canceled,38,38,100.00%,7,18.42%,1,2.63%,0,0.00%,0,0.00%,0,0.00%,,
+Exception,Exception,37,37,100.00%,19,51.35%,16,43.24%,0,0.00%,0,0.00%,0,0.00%,,
+Failed attempt,Failed attempt,17,17,100.00%,8,47.06%,6,35.29%,0,0.00%,0,0.00%,0,0.00%,,
