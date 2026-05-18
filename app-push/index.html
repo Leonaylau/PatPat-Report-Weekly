@@ -304,7 +304,7 @@
               <li><strong>Purchasers</strong>: each row with a real <code>Transaction ID</code> = 1 purchaser. Rows with <code>(not set)</code> Transaction ID contribute Sessions only.</li>
               <li><strong>CVR</strong> = Total Purchasers / Total Sessions (the original source <code>Total users</code> column was removed).</li>
               <li><strong>Current Push / Past Push / Future / Invalid</strong>: derived from manual push name <code>pushMMDD</code> patterns relative to the current period.</li>
-              <li><strong>Product join</strong>: main table joins to <code>orders_with_date_jan_apr_2026.csv</code> on <code>Transaction ID</code>. Multiple Product titles for the same transaction are concatenated as <code>A | B | C</code>. Missing or unmatched transaction IDs render as <code>Unknown</code>.</li>
+              <li><strong>Product join</strong>: main table joins to <code>products.csv</code> on <code>Transaction ID</code>. Multiple Product titles for the same transaction are concatenated as <code>A | B | C</code>. Missing or unmatched transaction IDs render as <code>Unknown</code>.</li>
               <li><strong>Per-product attribution</strong>: Purchasers per product = count of <code>(Transaction × Product title)</code> rows in table B (one row = one product unit). Revenue / Sessions are <strong>not split</strong> across multi-product transactions; each product receives the row's full value, so per-product totals can exceed grand totals by design.</li>
             </ul>
           </div>
