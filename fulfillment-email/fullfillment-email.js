@@ -1,5 +1,39 @@
 const MANIFEST_PATH = "./data/manifest.json";
-const STORAGE_KEY = "fulfillmentDashboardColumns.v3";
+const STORAGE_KEY = "fulfillmentDashboardColumns.v4";
+
+const GA_FILE_CANDIDATES = [
+  "./data/fulfillment-GA.csv",
+  "./data/fulfillment_GA.csv",
+  "./data/fulfillment-ga.csv",
+  "./data/raw/fulfillment-GA.csv",
+];
+
+const MANUAL_TERM_TO_FLOWS = {
+  delivered: ["Delivered", "Delivered - TEST"],
+  order_canceled: ["Order canceled"],
+  order_placed: ["Order placed"],
+  comment: ["comment & nps", "comment & nps - TEST"],
+  when_shipment_updates_to_in_transit: ["When shipment updates to in transit"],
+  delivery_arriving_soon: ["Delivery arriving soon"],
+};
+
+const MANUAL_TERM_ALIASES = {
+  delivery_arriing_soon: "delivery_arriving_soon",
+};
+
+const FLOW_TO_MANUAL_TERM = (() => {
+  const map = new Map();
+  Object.entries(MANUAL_TERM_TO_FLOWS).forEach(([term, flows]) => {
+    flows.forEach((flow) => map.set(flow, term));
+  });
+  return map;
+})();
+
+function canonicalizeManualTerm(value) {
+  const raw = String(value || "").trim().toLowerCase().replace(/\s+/g, "_");
+  if (!raw || raw === "(not_set)") return "";
+  return MANUAL_TERM_ALIASES[raw] || raw;
+}
 
 const overviewMetrics = [
   { label: "发送数", key: "sendCount", type: "number", inverse: false },
@@ -8,6 +42,7 @@ const overviewMetrics = [
   { label: "点击率", key: "clickRate", type: "rate", inverse: false },
   { label: "打开点击率", key: "ctor", type: "rate", inverse: false },
   { label: "退订率", key: "unsubscribeRate", type: "rate", inverse: true },
+  { label: "Sessions (GA)", key: "sessions", type: "number", inverse: false },
   { label: "下单uv", key: "orderUv", type: "number", inverse: false },
   { label: "Revenue", key: "revenue", type: "currency", inverse: false },
   { label: "ARPU", key: "arpu", type: "currency", inverse: false },
@@ -16,14 +51,17 @@ const overviewMetrics = [
 
 const defaultColumns = [
   { key: "flow", label: "Flow", type: "text" },
+  { key: "manualTerm", label: "Manual term", type: "text" },
   { key: "sendCount", label: "发送数", type: "number" },
   { key: "deliveredCount", label: "送达数", type: "number" },
   { key: "openRate", label: "打开率", type: "rate" },
   { key: "clickRate", label: "点击率", type: "rate" },
   { key: "ctor", label: "打开点击率", type: "rate" },
   { key: "unsubscribeRate", label: "退订率", type: "rate" },
+  { key: "sessions", label: "Sessions", type: "number" },
   { key: "orderUv", label: "下单uv", type: "number" },
   { key: "revenue", label: "Revenue", type: "currency" },
+  { key: "sessionsWow", label: "Sessions WoW %", type: "wowRateOnly" },
   { key: "revenueWow", label: "Revenue WoW %", type: "wowRateOnly" },
   { key: "orderUvWow", label: "下单uv WoW %", type: "wowRateOnly" },
   { key: "openRateWow", label: "打开率 WoW %", type: "wowRateOnly" },
@@ -36,12 +74,15 @@ const trendMetrics = [
   { label: "发送数趋势", key: "sendCount", type: "number" },
   { label: "打开率趋势", key: "openRate", type: "rate" },
   { label: "点击率趋势", key: "clickRate", type: "rate" },
+  { label: "Sessions 趋势", key: "sessions", type: "number" },
   { label: "Revenue 趋势", key: "revenue", type: "currency" },
   { label: "下单uv 趋势", key: "orderUv", type: "number" },
 ];
 
 const state = {
   store: { weeks: {}, weekOrder: [] },
+  gaRows: [],
+  gaByWeek: new Map(),
   selectedWeek: "",
   compareWeek: "",
   currentWeek: null,
@@ -101,21 +142,50 @@ async function initializeRepositoryData() {
       return;
     }
 
+    const weekRanges = computeWeekRanges(entries.map((entry) => entry.weekLabel));
+    const weeklyCsvs = [];
     for (const entry of entries) {
       const csvText = await fetchText(entry.path);
       const rows = parseCsv(csvText);
+      weeklyCsvs.push({ entry, rows, csvText });
+    }
+
+    let gaPath = "";
+    let gaRows = [];
+    for (const candidate of GA_FILE_CANDIDATES) {
+      try {
+        const response = await fetch(candidate, { cache: "no-store" });
+        if (response.ok) {
+          const text = await response.text();
+          gaRows = parseGaCsv(text);
+          gaPath = candidate;
+          break;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    state.gaRows = gaRows;
+    state.gaByWeek = bucketGaByWeek(gaRows, weekRanges);
+
+    for (const { entry, rows, csvText } of weeklyCsvs) {
       state.store.weeks[entry.weekLabel] = buildWeekData({
         rows,
         csvText,
         weekLabel: entry.weekLabel,
         fileName: entry.fileName,
+        weekRange: weekRanges.get(entry.weekLabel) || null,
+        gaForWeek: state.gaByWeek.get(entry.weekLabel) || new Map(),
       });
     }
 
     state.store.weekOrder = sortWeekLabels(Object.keys(state.store.weeks));
     state.selectedWeek = state.store.weekOrder[state.store.weekOrder.length - 1] || "";
     autoSelectCompareWeek();
-    state.statusMessage = `Loaded ${state.store.weekOrder.length} week(s) from ${MANIFEST_PATH}.`;
+    const gaInfo = gaPath
+      ? `, ${gaRows.length} GA rows from ${gaPath}`
+      : `, GA file not found (Sessions / Revenue / Order UV will be empty)`;
+    state.statusMessage = `Loaded ${state.store.weekOrder.length} week(s) from ${MANIFEST_PATH}${gaInfo}.`;
     if (state.selectedWeek) {
       document.getElementById("dataFreshness").textContent = `数据截至: ${state.selectedWeek}`;
     }
@@ -185,53 +255,66 @@ function normalizeFileName(value) {
   return `${raw.split("/").pop()}.csv`;
 }
 
-function buildWeekData({ rows, csvText, weekLabel, fileName }) {
+function buildWeekData({ rows, csvText, weekLabel, fileName, weekRange, gaForWeek }) {
   const mappedRows = rows.map(mapRow).filter((row) => row.flow || row.trigger);
   const summary = mappedRows.find((row) => row.flow === "Summary") || null;
   let detailRows = mappedRows.filter((row) => row.flow && row.flow !== "Summary");
   const allocationNotes = [];
+  const gaMap = gaForWeek instanceof Map ? gaForWeek : new Map();
 
-  if (summary && detailRows.length) {
-    const detailHasRevenue = detailRows.some((row) => row.revenue !== null);
-    const detailHasOrders = detailRows.some((row) => row.orderUv !== null);
-    const totalClicks = detailRows.reduce((sum, row) => sum + (toNumber(row.clickCount) || 0), 0);
-    const totalOpens = detailRows.reduce((sum, row) => sum + (toNumber(row.openCount) || 0), 0);
+  detailRows = detailRows.map((row) => {
+    const manualTerm = FLOW_TO_MANUAL_TERM.get(row.flow) || "";
+    const ga = manualTerm ? gaMap.get(manualTerm) : null;
+    const sessions = ga ? ga.sessions : null;
+    const revenue = ga ? ga.revenue : null;
+    const orderUv = ga ? ga.orderCount : null;
+    return {
+      ...row,
+      manualTerm,
+      sessions,
+      revenue,
+      orderUv,
+      arpu: safeDivide(revenue, row.deliveredCount),
+      revenuePerOrder: safeDivide(revenue, orderUv),
+    };
+  });
 
-    detailRows = detailRows.map((row) => {
-      let revenue = row.revenue;
-      let orderUv = row.orderUv;
-
-      if (!detailHasRevenue && revenue === null && summary.revenue !== null) {
-        revenue = (safeDivide(row.clickCount, totalClicks) || 0) * summary.revenue;
-      }
-
-      if (!detailHasOrders && orderUv === null && summary.orderUv !== null) {
-        orderUv = (safeDivide(row.openCount, totalOpens) || 0) * summary.orderUv;
-      }
-
-      return {
-        ...row,
-        revenue,
-        orderUv,
-        arpu: safeDivide(revenue, row.deliveredCount),
-        revenuePerOrder: safeDivide(revenue, orderUv),
-      };
+  if (summary) {
+    let summarySessions = 0;
+    let summaryRevenue = 0;
+    let summaryOrderUv = 0;
+    let hasGaForWeek = false;
+    gaMap.forEach((agg) => {
+      summarySessions += toNumber(agg.sessions) || 0;
+      summaryRevenue += toNumber(agg.revenue) || 0;
+      summaryOrderUv += toNumber(agg.orderCount) || 0;
+      hasGaForWeek = true;
     });
+    if (hasGaForWeek) {
+      summary.sessions = summarySessions;
+      summary.revenue = summaryRevenue;
+      summary.orderUv = summaryOrderUv;
+      summary.arpu = safeDivide(summaryRevenue, summary.deliveredCount);
+      summary.revenuePerOrder = safeDivide(summaryRevenue, summaryOrderUv);
+    } else {
+      summary.sessions = null;
+    }
+  }
 
-    if (!detailHasRevenue && summary.revenue !== null) {
-      allocationNotes.push("Flow-level revenue is missing in the CSV. Revenue share is allocated from Summary by click share.");
-    }
-    if (!detailHasOrders && summary.orderUv !== null) {
-      allocationNotes.push("Flow-level order UV is missing in the CSV. Order UV share is allocated from Summary by open share.");
-    }
+  if (gaMap.size === 0) {
+    allocationNotes.push("fulfillment-GA has no rows for this week's date range; Sessions / Revenue / Order UV are empty.");
+  } else {
+    allocationNotes.push("Sessions / Revenue / Order UV are joined from fulfillment-GA on Manual term. TEST flows share the same GA aggregate as their production counterparts (intentional duplicate attribution).");
   }
 
   return {
     weekLabel,
     fileName,
     rawCsv: csvText,
+    weekRange,
     summary,
     detailRows,
+    rows: detailRows,
     allocationNotes,
   };
 }
@@ -310,6 +393,7 @@ function applyFiltersAndRender() {
 function enrichFlowWow(currentRow, priorRow, hasPriorWeek) {
   return {
     ...currentRow,
+    sessionsWow: buildWowObject(currentRow.sessions, priorRow?.sessions, "number", false, hasPriorWeek, Boolean(priorRow)),
     revenueWow: buildWowObject(currentRow.revenue, priorRow?.revenue, "currency", false, hasPriorWeek, Boolean(priorRow)),
     orderUvWow: buildWowObject(currentRow.orderUv, priorRow?.orderUv, "number", false, hasPriorWeek, Boolean(priorRow)),
     openRateWow: buildWowObject(currentRow.openRate, priorRow?.openRate, "rate", false, hasPriorWeek, Boolean(priorRow)),
@@ -1033,6 +1117,186 @@ function mapRow(raw) {
     arpu: safeDivide(revenue, deliveredCount),
     revenuePerOrder: safeDivide(revenue, orderUv),
   };
+}
+
+function parseGaCsv(text) {
+  const cleanLines = text
+    .split(/\r?\n/)
+    .filter((line) => line.trim() !== "")
+    .filter((line) => !line.trim().startsWith("#"));
+
+  const csvText = cleanLines.join("\n");
+  const records = parseCsv(csvText);
+
+  const rows = [];
+  records.forEach((raw) => {
+    const dateText = normalizeText(pickField(raw, ["Date", "date"]));
+    const txIdRaw = normalizeText(pickField(raw, ["Transaction ID", "transaction ID", "transaction id", "TransactionID"]));
+    const manualTermRaw = normalizeText(pickField(raw, [
+      "Manual term", "manual term", "Session manual term",
+      "Session Manual term", "session manual term",
+    ]));
+    const sessionsRaw = pickField(raw, ["Sessions", "sessions", "会话数"]);
+    const revenueRaw = pickField(raw, ["Total revenue", "total revenue", "Revenue", "总收入"]);
+
+    const dateObj = parseFlexibleDate(dateText);
+    if (!dateObj) return;
+    if (/grand total/i.test(manualTermRaw) || /grand total/i.test(dateText)) return;
+
+    const manualTerm = canonicalizeManualTerm(manualTermRaw);
+    if (!manualTerm) return;
+    if (!Object.prototype.hasOwnProperty.call(MANUAL_TERM_TO_FLOWS, manualTerm)) return;
+
+    const transactionId = /^\(not\s*set\)$/i.test(txIdRaw) ? "" : txIdRaw;
+    rows.push({
+      dateObj,
+      transactionId,
+      manualTerm,
+      sessions: toNumber(sessionsRaw) || 0,
+      revenue: toNumber(revenueRaw) || 0,
+    });
+  });
+  return rows;
+}
+
+function bucketGaByWeek(gaRows, weekRanges) {
+  const result = new Map();
+  weekRanges.forEach((_range, label) => result.set(label, new Map()));
+
+  const ordered = [...weekRanges.entries()];
+  gaRows.forEach((row) => {
+    const match = ordered.find(([, range]) => range && row.dateObj >= range.start && row.dateObj <= range.end);
+    if (!match) return;
+    const [label] = match;
+    const map = result.get(label);
+    if (!map.has(row.manualTerm)) {
+      map.set(row.manualTerm, { sessions: 0, revenue: 0, orderCount: 0 });
+    }
+    const agg = map.get(row.manualTerm);
+    agg.sessions += row.sessions;
+    agg.revenue += row.revenue;
+    if (row.transactionId) agg.orderCount += 1;
+  });
+  return result;
+}
+
+function computeWeekRanges(weekLabels) {
+  const result = new Map();
+  const explicit = [];
+  const dayOnly = [];
+  weekLabels.forEach((label, index) => {
+    const range = parseExplicitWeekLabel(label);
+    if (range) {
+      explicit.push({ index, label, range });
+      result.set(label, range);
+    } else {
+      dayOnly.push({ index, label });
+    }
+  });
+
+  if (!dayOnly.length) return result;
+
+  const referenceLabel = explicit[0];
+  if (!referenceLabel) {
+    weekLabels.forEach((label) => result.set(label, null));
+    return result;
+  }
+
+  // For each day-only label, walk backwards from the first explicit week.
+  const referenceStart = referenceLabel.range.start;
+  const offset = referenceLabel.index;
+  dayOnly
+    .sort((a, b) => a.index - b.index)
+    .forEach(({ index, label }) => {
+      const weeksBefore = offset - index;
+      const start = addDays(referenceStart, -7 * weeksBefore);
+      const end = addDays(start, 6);
+      const days = parseDayOnlyLabel(label);
+      // Sanity check: confirm Sun day-of-month matches
+      if (days && start.getDate() !== days.startDay) {
+        // Fall back to inferred date even if Sun mismatch — record it but proceed.
+      }
+      result.set(label, { start, end });
+    });
+
+  return result;
+}
+
+function parseExplicitWeekLabel(label) {
+  const value = String(label || "").trim();
+  const match = value.match(/^week(\d{1,2})\.(\d{1,2})-(\d{1,2})\.(\d{1,2})$/i);
+  if (!match) return null;
+  const [, m1, d1, m2, d2] = match.map(Number);
+  const year = inferYearFromContext();
+  const start = buildLocalDate(year, m1, d1);
+  let end = buildLocalDate(year, m2, d2);
+  // Cross-year wrap (e.g. week12.30-1.5)
+  if (end < start) end = buildLocalDate(year + 1, m2, d2);
+  if (!start || !end) return null;
+  return { start, end };
+}
+
+function parseDayOnlyLabel(label) {
+  const match = String(label || "").trim().match(/^week(\d{1,2})-(\d{1,2})$/i);
+  if (!match) return null;
+  return { startDay: Number(match[1]), endDay: Number(match[2]) };
+}
+
+function inferYearFromContext() {
+  return new Date().getFullYear();
+}
+
+function buildLocalDate(year, month, day) {
+  if (!year || !month || !day) return null;
+  const date = new Date(year, month - 1, day);
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+  return date;
+}
+
+function addDays(date, amount) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + amount);
+  return new Date(next.getFullYear(), next.getMonth(), next.getDate());
+}
+
+function parseFlexibleDate(value) {
+  if (!value) return null;
+  const raw = String(value).trim();
+
+  const compact = raw.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (compact) {
+    return buildLocalDate(Number(compact[1]), Number(compact[2]), Number(compact[3]));
+  }
+
+  const tryDate = new Date(raw);
+  if (!Number.isNaN(tryDate.getTime())) {
+    return new Date(tryDate.getFullYear(), tryDate.getMonth(), tryDate.getDate());
+  }
+
+  const m = raw.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/);
+  if (m) {
+    const month = Number(m[1]);
+    const day = Number(m[2]);
+    const year = Number(m[3].length === 2 ? `20${m[3]}` : m[3]);
+    return buildLocalDate(year, month, day);
+  }
+
+  return null;
+}
+
+function pickField(record, keys) {
+  for (const key of keys) {
+    if (record[key] !== undefined && record[key] !== null && String(record[key]).trim() !== "") {
+      return record[key];
+    }
+  }
+  return "";
 }
 
 function parseCsv(text) {
